@@ -3,6 +3,7 @@ package com.soywiz.kminiorm
 import com.fasterxml.jackson.core.*
 import com.fasterxml.jackson.databind.*
 import com.fasterxml.jackson.databind.module.*
+import com.soywiz.kminiorm.internal.*
 import java.sql.*
 
 class Db(val connection: String, val user: String, val pass: String) {
@@ -16,15 +17,18 @@ class Db(val connection: String, val user: String, val pass: String) {
         }
     })
 
+    private val connectionPool = Pool { DriverManager.getConnection(connection, user, pass).also { it.autoCommit = false } }
+
     fun <T> transaction(callback: DbTransaction.() -> T): T {
-        val tr = DbTransaction(this)
-        return tr.run {
-            this@Db.begin()
-            try {
-                callback(tr).also { this@Db.commit() }
-            } catch (e: Throwable) {
-                this@Db.rollback()
-                throw e
+        connectionPool.take {
+            val tr = DbTransaction(this, it)
+            return tr.run {
+                try {
+                    callback(tr).also { this@Db.commit() }
+                } catch (e: Throwable) {
+                    this@Db.rollback()
+                    throw e
+                }
             }
         }
     }
@@ -70,13 +74,7 @@ fun ResultSet.toListMap(): List<Map<String, Any?>> {
     return out
 }
 
-class DbTransaction(val db: Db) {
-    lateinit var connection: Connection
-    fun Db.begin() {
-        this@DbTransaction.connection = DriverManager.getConnection(db.connection, db.user, db.pass)
-        this@DbTransaction.connection.autoCommit = false
-    }
-
+class DbTransaction(val db: Db, val connection: Connection) {
     fun Db.commit() {
         this@DbTransaction.connection.commit()
     }
@@ -111,12 +109,4 @@ class DbResult(
 ) : List<Map<String, Any?>> by data {
     val updateCount get() = statement.updateCount
     override fun toString(): String = data.toString()
-}
-
-private fun ByteArray.hex(): String = buildString(size * 2) {
-    val digits = "0123456789ABCDEF"
-    for (element in this@hex) {
-        append(digits[(element.toInt() ushr 4) and 0xF])
-        append(digits[(element.toInt() ushr 0) and 0xF])
-    }
 }
