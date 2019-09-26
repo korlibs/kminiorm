@@ -30,7 +30,7 @@ class KminiOrmTest {
         assertEquals(byteArrayOf(1, 2, 3, 4).toList(), demoTable.select().first().bytes.toList())
     }
 
-    data class Demo2(val bytes: ByteArray)
+    data class Demo2(val bytes: ByteArray, val time: Date = Date())
 
     data class Demo(
         //val _id: String = UUID.randomUUID().toString(),

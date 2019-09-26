@@ -112,6 +112,9 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
         }, clazz.java) }
     }
 
+    fun find(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Iterable<T> = select(query = query)
+    fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query).firstOrNull()
+
     fun update(value: Partial<T>, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Int {
         val entries = value.data.fix().entries
         val keys = entries.map { it.key }
