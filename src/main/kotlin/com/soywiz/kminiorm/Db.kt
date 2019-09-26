@@ -1,8 +1,21 @@
 package com.soywiz.kminiorm
 
+import com.fasterxml.jackson.core.*
+import com.fasterxml.jackson.databind.*
+import com.fasterxml.jackson.databind.module.*
 import java.sql.*
 
 class Db(val connection: String, val user: String, val pass: String) {
+    val mapper = KotlinMapper.registerModule(object : SimpleModule() {
+        override fun setupModule(context: SetupContext) {
+            addSerializer(Blob::class.java, object : JsonSerializer<Blob>() {
+                override fun serialize(value: Blob, gen: JsonGenerator, serializers: SerializerProvider) {
+                    gen.writeBinary(value.binaryStream.readBytes())
+                }
+            })
+        }
+    })
+
     fun <T> transaction(callback: DbTransaction.() -> T): T {
         val tr = DbTransaction(this)
         return tr.run {
@@ -76,7 +89,12 @@ class DbTransaction(val db: Db) {
         //println("QUERY: $sql")
         val statement = connection.prepareStatement(sql)
         for (index in params.indices) {
-            statement.setObject(index + 1, params[index])
+            val param = params[index]
+            if (param is ByteArray) {
+                statement.setBlob(index + 1, param.inputStream())
+            } else {
+                statement.setObject(index + 1, param)
+            }
         }
         val resultSet = when {
             sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
@@ -93,4 +111,12 @@ class DbResult(
 ) : List<Map<String, Any?>> by data {
     val updateCount get() = statement.updateCount
     override fun toString(): String = data.toString()
+}
+
+private fun ByteArray.hex(): String = buildString(size * 2) {
+    val digits = "0123456789ABCDEF"
+    for (element in this@hex) {
+        append(digits[(element.toInt() ushr 4) and 0xF])
+        append(digits[(element.toInt() ushr 0) and 0xF])
+    }
 }

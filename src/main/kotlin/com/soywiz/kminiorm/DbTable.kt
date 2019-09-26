@@ -1,5 +1,7 @@
 package com.soywiz.kminiorm
 
+import java.io.*
+import java.sql.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
@@ -66,7 +68,7 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
     }
 
     fun insert(instance: T): T {
-        insert(KotlinMapper.convertValueToMap(instance))
+        insert(db.mapper.convertValueToMap(instance))
         return instance
     }
 
@@ -89,7 +91,7 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
         }, *entries.map { it.value }.toTypedArray())
     }
 
-    fun select(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Iterable<T> {
+    fun select(skip: Long? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Iterable<T> {
         return db.query(buildString {
             append("SELECT ")
             append("*")
@@ -97,11 +99,20 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
             append(quotedTableName)
             append(" WHERE ")
             append(query(DbQueryBuilder as DbQueryBuilder<T>).toString(db))
+            if (limit != null) append(" LIMIT $limit")
+            if (skip != null) append(" OFFSET $skip")
             append(";")
-        }).map { KotlinMapper.convertValue(it, clazz.java) }
+        }).map { db.mapper.convertValue(it.mapValues { (key, value) ->
+            //println("it: $value, ${value?.javaClass}: ${value is InputStream}")
+            when (value) {
+                is InputStream -> value.readBytes()
+                is Blob -> value.binaryStream.readBytes()
+                else -> value
+            }
+        }, clazz.java) }
     }
 
-    fun update(value: Partial<T>, query: DbQueryBuilder<T>.() -> DbQuery<T>): Int {
+    fun update(value: Partial<T>, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Int {
         val entries = value.data.fix().entries
         val keys = entries.map { it.key }
         val values = entries.map { it.value }
@@ -112,6 +123,7 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
             append(keys.joinToString(", ") { db.quoteColumnName(it) + "=?" })
             append(" WHERE ")
             append(query(DbQueryBuilder as DbQueryBuilder<T>).toString(db))
+            if (limit != null) append(" LIMIT $limit")
             append(";")
         }, *values.toTypedArray()).updateCount
     }
@@ -126,6 +138,7 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
 fun KType.toSqlType(db: Db, annotations: KAnnotatedElement): String {
     return when (this.jvmErasure) {
         Int::class -> "INTEGER"
+        ByteArray::class -> "BLOB"
         String::class -> {
             val maxLength = annotations.findAnnotation<MaxLength>()
             //if (maxLength != null) "VARCHAR(${maxLength.length})" else "TEXT"

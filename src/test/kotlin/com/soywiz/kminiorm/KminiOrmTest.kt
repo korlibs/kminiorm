@@ -22,6 +22,16 @@ class KminiOrmTest {
         println(demoTable.select())
     }
 
+    @Test
+    fun testByteArray() {
+        val db = Db("jdbc:h2:mem:test2;DB_CLOSE_DELAY=-1", "user", "")
+        val demoTable = db.table<Demo2>()
+        demoTable.insert(Demo2(bytes = byteArrayOf(1, 2, 3, 4)))
+        assertEquals(byteArrayOf(1, 2, 3, 4).toList(), demoTable.select().first().bytes.toList())
+    }
+
+    data class Demo2(val bytes: ByteArray)
+
     data class Demo(
         //val _id: String = UUID.randomUUID().toString(),
         @Unique val _id: UUID = UUID.randomUUID(),
