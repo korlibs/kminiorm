@@ -9,34 +9,25 @@ import kotlin.reflect.jvm.*
 fun <T : Any> Db.table(clazz: KClass<T>) = DbTable(this, clazz).also { it.initialize() }
 inline fun <reified T : Any> Db.table() = table(T::class)
 
-class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
-    val tableName = clazz.findAnnotation<Name>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
-    val quotedTableName = db.quoteTableName(tableName)
-    val columns = clazz.memberProperties.filter { it.findAnnotation<Ignore>() == null }.map { ColumnDef(db, it) }
-
-    class ColumnDef<T : Any> internal constructor(val db: Db, val property: KProperty1<T, *>) {
-        val jclazz get() = property.returnType.jvmErasure
-        val name = property.findAnnotation<Name>()?.name ?: property.name
-        val quotedName = db.quoteColumnName(name)
-        val sqlType by lazy { property.returnType.toSqlType(db, property) }
-        val isNullable get() = property.returnType.isMarkedNullable
-        val isUnique = property.findAnnotation<Unique>() != null
-        val isIndex = property.findAnnotation<Index>() != null
-    }
+abstract class BaseDbTable<T : Any> {
+    abstract val table: DbTable<T>
+    abstract fun query(sql: String, vararg params: Any?): DbResult
+    private val _db get() = table.db
+    private val _quotedTableName get() = table.quotedTableName
 
     fun showColumns(): Map<String, Map<String, Any?>> {
-        return db.query("SHOW COLUMNS FROM $quotedTableName;").associateBy { it["COLUMN_NAME"]?.toString() ?: "-" }
+        return query("SHOW COLUMNS FROM $_quotedTableName;").associateBy { it["COLUMN_NAME"]?.toString() ?: "-" }
     }
 
     fun initialize() = this.apply {
-        db.query("CREATE TABLE IF NOT EXISTS $quotedTableName;")
+        query("CREATE TABLE IF NOT EXISTS $_quotedTableName;")
         val oldColumns = showColumns()
-        for (column in columns) {
+        for (column in table.columns) {
             if (column.name in oldColumns) continue // Do not add columns if they already exists
 
-            db.query(buildString {
+            query(buildString {
                 append("ALTER TABLE ")
-                append(quotedTableName)
+                append(_quotedTableName)
                 append(" ADD ")
                 append(column.quotedName)
                 append(" ")
@@ -54,21 +45,21 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
             })
         }
 
-        for (column in columns) {
+        for (column in table.columns) {
             //println("$column: ${column.quotedName}: ${column.isUnique}, ${column.isIndex}")
             if (column.isUnique || column.isIndex) {
                 val unique = column.isUnique
-                db.query(buildString {
+                query(buildString {
                     append("CREATE ")
                     if (unique) append("UNIQUE ")
-                    append("INDEX IF NOT EXISTS ${column.quotedName} ON $quotedTableName (${column.quotedName});")
+                    append("INDEX IF NOT EXISTS ${column.quotedName} ON $_quotedTableName (${column.quotedName});")
                 })
             }
         }
     }
 
     fun insert(instance: T): T {
-        insert(db.mapper.convertValueToMap(instance))
+        insert(_db.mapper.convertValueToMap(instance))
         return instance
     }
 
@@ -78,11 +69,11 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
 
     fun insert(data: Map<String, Any?>): DbResult {
         val entries = data.entries.toList()
-        return db.query(buildString {
+        return query(buildString {
             append("INSERT INTO ")
-            append(quotedTableName)
+            append(_quotedTableName)
             append("(")
-            append(entries.joinToString(", ") { db.quoteColumnName(it.key) })
+            append(entries.joinToString(", ") { _db.quoteColumnName(it.key) })
             append(")")
             append(" VALUES ")
             append("(")
@@ -92,24 +83,24 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
     }
 
     fun select(skip: Long? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Iterable<T> {
-        return db.query(buildString {
+        return query(buildString {
             append("SELECT ")
             append("*")
             append(" FROM ")
-            append(quotedTableName)
+            append(_quotedTableName)
             append(" WHERE ")
-            append(query(DbQueryBuilder as DbQueryBuilder<T>).toString(db))
+            append(query(DbQueryBuilder as DbQueryBuilder<T>).toString(_db))
             if (limit != null) append(" LIMIT $limit")
             if (skip != null) append(" OFFSET $skip")
             append(";")
-        }).map { db.mapper.convertValue(it.mapValues { (key, value) ->
+        }).map { _db.mapper.convertValue(it.mapValues { (key, value) ->
             //println("it: $value, ${value?.javaClass}: ${value is InputStream}")
             when (value) {
                 is InputStream -> value.readBytes()
                 is Blob -> value.binaryStream.readBytes()
                 else -> value
             }
-        }, clazz.java) }
+        }, table.clazz.java) }
     }
 
     fun find(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Iterable<T> = select(query = query)
@@ -119,13 +110,13 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
         val entries = value.data.fix().entries
         val keys = entries.map { it.key }
         val values = entries.map { it.value }
-        return db.query(buildString {
+        return query(buildString {
             append("UPDATE ")
-            append(quotedTableName)
+            append(table.quotedTableName)
             append(" SET ")
-            append(keys.joinToString(", ") { db.quoteColumnName(it) + "=?" })
+            append(keys.joinToString(", ") { _db.quoteColumnName(it) + "=?" })
             append(" WHERE ")
-            append(query(DbQueryBuilder as DbQueryBuilder<T>).toString(db))
+            append(query(DbQueryBuilder as DbQueryBuilder<T>).toString(_db))
             if (limit != null) append(" LIMIT $limit")
             append(";")
         }, *values.toTypedArray()).updateCount
@@ -135,6 +126,33 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
         // @TODO: Use @Name annotation
         return this
     }
+}
+
+class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) : BaseDbTable<T>() {
+    val tableName = clazz.findAnnotation<Name>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
+    val quotedTableName = db.quoteTableName(tableName)
+    val columns = clazz.memberProperties.filter { it.findAnnotation<Ignore>() == null }.map { ColumnDef(db, it) }
+
+    class ColumnDef<T : Any> internal constructor(val db: Db, val property: KProperty1<T, *>) {
+        val jclazz get() = property.returnType.jvmErasure
+        val name = property.findAnnotation<Name>()?.name ?: property.name
+        val quotedName = db.quoteColumnName(name)
+        val sqlType by lazy { property.returnType.toSqlType(db, property) }
+        val isNullable get() = property.returnType.isMarkedNullable
+        val isUnique = property.findAnnotation<Unique>() != null
+        val isIndex = property.findAnnotation<Index>() != null
+    }
+
+    override val table: DbTable<T> get() = this
+    override fun query(sql: String, vararg params: Any?): DbResult = db.query(sql, *params)
+
+    fun <R> transaction(callback: (DbTableTransaction<T>) -> R): R = db.transaction {
+        callback(DbTableTransaction(this@DbTable, this))
+    }
+}
+
+class DbTableTransaction<T: Any>(override val table: DbTable<T>, val transaction: DbTransaction) : BaseDbTable<T>() {
+    override fun query(sql: String, vararg params: Any?): DbResult = transaction.query(sql, *params)
 }
 
 
