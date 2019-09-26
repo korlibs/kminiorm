@@ -14,3 +14,6 @@ annotation class Primary
 
 @Target(AnnotationTarget.PROPERTY)
 annotation class Index
+
+@Target(AnnotationTarget.PROPERTY)
+annotation class Ignore

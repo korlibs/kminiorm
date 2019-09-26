@@ -12,7 +12,7 @@ inline fun <reified T : Any> Db.table() = table(T::class)
 class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
     val tableName = clazz.findAnnotation<Name>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
     val quotedTableName = db.quoteTableName(tableName)
-    val columns = clazz.memberProperties.map { ColumnDef(db, it) }
+    val columns = clazz.memberProperties.filter { it.findAnnotation<Ignore>() == null }.map { ColumnDef(db, it) }
 
     class ColumnDef<T : Any> internal constructor(val db: Db, val property: KProperty1<T, *>) {
         val jclazz get() = property.returnType.jvmErasure
