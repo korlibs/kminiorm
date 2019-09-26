@@ -13,6 +13,7 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
     val columns = clazz.memberProperties.map { ColumnDef(db, it) }
 
     class ColumnDef<T : Any> internal constructor(val db: Db, val property: KProperty1<T, *>) {
+        val jclazz get() = property.returnType.jvmErasure
         val name = property.findAnnotation<Name>()?.name ?: property.name
         val quotedName = db.quoteColumnName(name)
         val sqlType by lazy { property.returnType.toSqlType(db, property) }
@@ -42,6 +43,10 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) {
                     append(" NULLABLE")
                 } else {
                     append(" NOT NULL")
+                    when {
+                        column.jclazz == String::class.java -> append(" DEFAULT (\"\")")
+                        column.jclazz.isSubclassOf(Number::class) -> append(" DEFAULT (0)")
+                    }
                 }
                 append(";")
             })
