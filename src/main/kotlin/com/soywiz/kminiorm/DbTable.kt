@@ -66,23 +66,22 @@ abstract class BaseDbTable<T : Any> : DbQueryable {
         return instance
     }
 
-    suspend fun insert(instance: Partial<T>) {
-        insert(instance.data.fix())
-    }
+    suspend fun insert(instance: Partial<T>) = insert(instance.data)
 
     suspend fun insert(data: Map<String, Any?>): DbResult {
-        val entries = data.entries.toList()
+        val entries = table.toColumnMap(data).entries
+
         return query(buildString {
             append("INSERT INTO ")
             append(_quotedTableName)
             append("(")
-            append(entries.joinToString(", ") { _db.quoteColumnName(it.key) })
+            append(entries.joinToString(", ") { it.key.quotedName })
             append(")")
             append(" VALUES ")
             append("(")
             append(entries.joinToString(", ") { "?" })
             append(")")
-        }, *entries.map { it.value }.toTypedArray())
+        }, *entries.map { table.serializeColumn(it.value, it.key) }.toTypedArray())
     }
 
     suspend fun select(skip: Long? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Iterable<T> {
@@ -97,12 +96,7 @@ abstract class BaseDbTable<T : Any> : DbQueryable {
             if (skip != null) append(" OFFSET $skip")
             append(";")
         }).map { _db.mapper.convertValue(it.mapValues { (key, value) ->
-            //println("it: $value, ${value?.javaClass}: ${value is InputStream}")
-            when (value) {
-                is InputStream -> value.readBytes()
-                is Blob -> value.binaryStream.readBytes()
-                else -> value
-            }
+            table.deserializeColumn(value, table.getColumnByName(key), key)
         }, table.clazz.java) }
     }
 
@@ -110,24 +104,19 @@ abstract class BaseDbTable<T : Any> : DbQueryable {
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query).firstOrNull()
 
     suspend fun update(value: Partial<T>, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Int {
-        val entries = value.data.fix().entries
+        val entries = table.toColumnMap(value.data).entries
         val keys = entries.map { it.key }
-        val values = entries.map { it.value }
+        val values = entries.map { table.serializeColumn(it.value, it.key) }
         return query(buildString {
             append("UPDATE ")
             append(table.quotedTableName)
             append(" SET ")
-            append(keys.joinToString(", ") { _db.quoteColumnName(it) + "=?" })
+            append(keys.joinToString(", ") { "${it.quotedName}=?" })
             append(" WHERE ")
             append(query(DbQueryBuilder as DbQueryBuilder<T>).toString(_db))
             if (limit != null) append(" LIMIT $limit")
             append(";")
         }, *values.toTypedArray()).updateCount
-    }
-
-    private fun Map<String, Any?>.fix(): Map<String, Any?> {
-        // @TODO: Use @Name annotation
-        return this
     }
 }
 
@@ -135,6 +124,8 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) : BaseDbTable<T>() {
     val tableName = clazz.findAnnotation<Name>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
     val quotedTableName = db.quoteTableName(tableName)
     val columns = clazz.memberProperties.filter { it.findAnnotation<Ignore>() == null }.map { ColumnDef(db, it) }
+    val columnsByName = columns.associateBy { it.name }
+    fun getColumnByName(name: String) = columnsByName[name]
 
     class ColumnDef<T : Any> internal constructor(val db: Db, val property: KProperty1<T, *>) {
         val jclazz get() = property.returnType.jvmErasure
@@ -151,6 +142,36 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) : BaseDbTable<T>() {
 
     suspend fun <R> transaction(callback: (DbTableTransaction<T>) -> R): R = db.transaction {
         callback(DbTableTransaction(this@DbTable, this))
+    }
+
+    fun toColumnMap(map: Map<String, Any?>): Map<ColumnDef<T>, Any?> {
+        @Suppress("UNCHECKED_CAST")
+        return map.entries.map { getColumnByName(it.key) to it.value }.filter { it.first != null }.toMap() as Map<ColumnDef<T>, Any?>
+    }
+
+    fun serializeColumn(value: Any?, column: ColumnDef<T>?, columnName: String = column?.name ?: "unknown"): Any? {
+        return when (value) {
+            null -> null
+            is ByteArray -> value
+            is String -> value
+            is Number -> value
+            else -> db.mapper.writeValueAsString(value)
+        }
+        //return value
+    }
+
+    fun deserializeColumn(value: Any?, column: ColumnDef<T>?, columnName: String = column?.name ?: "unknown"): Any? {
+        return when (value) {
+            is InputStream -> value.readBytes()
+            is Blob -> value.binaryStream.readBytes()
+            else -> when {
+                column != null -> when {
+                    List::class.isSubclassOf(column.jclazz) || Map::class.isSubclassOf(column.jclazz) -> db.mapper.readValue(value.toString(), column.jclazz.java)
+                    else -> value
+                }
+                else -> value
+            }
+        }
     }
 }
 

@@ -8,7 +8,7 @@ class KminiOrmTest {
     @Test
     fun test() {
         runBlocking {
-            val db = Db("jdbc:h2:mem:test;DB_CLOSE_DELAY=-1", "user", "")
+            val db = Db("jdbc:h2:mem:test;DB_CLOSE_DELAY=10", "user", "")
             val demoTable = db.table<Demo>()
             demoTable.insert(Demo(test = "hello"))
             demoTable.insert(Demo(test = "world"))
@@ -28,11 +28,25 @@ class KminiOrmTest {
     @Test
     fun testByteArray() {
         runBlocking {
-            val db = Db("jdbc:h2:mem:test2;DB_CLOSE_DELAY=-1", "user", "")
+            val db = Db("jdbc:h2:mem:test2;DB_CLOSE_DELAY=10", "user", "")
             val demoTable = db.table<Demo2>()
             demoTable.insert(Demo2(bytes = byteArrayOf(1, 2, 3, 4)))
             assertEquals(byteArrayOf(1, 2, 3, 4).toList(), demoTable.select().first().bytes.toList())
         }
+    }
+
+    @Test
+    fun testList() {
+        runBlocking {
+            val db = Db("jdbc:h2:mem:test2;DB_CLOSE_DELAY=10", "user", "")
+            val demoTable = db.table<Demo3>()
+            demoTable.insert(Demo3(listOf(Demo3.Item("hello"), Demo3.Item("world"))))
+            assertEquals(listOf("hello", "world"), demoTable.select().first().items.map { it.name })
+        }
+    }
+
+    data class Demo3(val items: List<Item>){
+        data class Item(val name: String)
     }
 
     data class Demo2(val bytes: ByteArray, val time: Date = Date())

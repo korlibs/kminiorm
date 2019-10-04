@@ -3,6 +3,7 @@ package com.soywiz.kminiorm
 import com.fasterxml.jackson.core.*
 import com.fasterxml.jackson.databind.*
 import com.fasterxml.jackson.databind.module.*
+import com.fasterxml.jackson.module.kotlin.*
 import com.soywiz.kminiorm.internal.*
 import kotlinx.coroutines.*
 import java.sql.*
@@ -10,7 +11,7 @@ import kotlin.coroutines.*
 
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
 class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineContext = Dispatchers.IO) : DbQueryable {
-    val mapper = KotlinMapper.registerModule(object : SimpleModule() {
+    val mapper = KotlinMapper.registerModule(KotlinModule()).registerModule(object : SimpleModule() {
         override fun setupModule(context: SetupContext) {
             addSerializer(Blob::class.java, object : JsonSerializer<Blob>() {
                 override fun serialize(value: Blob, gen: JsonGenerator, serializers: SerializerProvider) {
