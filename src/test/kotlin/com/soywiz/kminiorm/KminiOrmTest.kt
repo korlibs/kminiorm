@@ -5,10 +5,12 @@ import java.util.*
 import kotlin.test.*
 
 class KminiOrmTest {
+    fun db() = Db("jdbc:h2:mem:test;DB_CLOSE_DELAY=10", "user", "")
+
     @Test
     fun test() {
         runBlocking {
-            val db = Db("jdbc:h2:mem:test;DB_CLOSE_DELAY=10", "user", "")
+            val db = db()
             val demoTable = db.table<Demo>()
             demoTable.insert(Demo(test = "hello"))
             demoTable.insert(Demo(test = "world"))
@@ -28,7 +30,7 @@ class KminiOrmTest {
     @Test
     fun testByteArray() {
         runBlocking {
-            val db = Db("jdbc:h2:mem:test2;DB_CLOSE_DELAY=10", "user", "")
+            val db = db()
             val demoTable = db.table<Demo2>()
             demoTable.insert(Demo2(bytes = byteArrayOf(1, 2, 3, 4)))
             assertEquals(byteArrayOf(1, 2, 3, 4).toList(), demoTable.select().first().bytes.toList())
@@ -38,7 +40,7 @@ class KminiOrmTest {
     @Test
     fun testList() {
         runBlocking {
-            val db = Db("jdbc:h2:mem:test2;DB_CLOSE_DELAY=10", "user", "")
+            val db = db()
             val demoTable = db.table<Demo3>()
             demoTable.insert(Demo3(listOf(Demo3.Item("hello"), Demo3.Item("world"))))
             assertEquals(listOf("hello", "world"), demoTable.select().first().items.map { it.name })
@@ -48,7 +50,7 @@ class KminiOrmTest {
     @Test
     fun testItem() {
         runBlocking {
-            val db = Db("jdbc:h2:mem:test2;DB_CLOSE_DELAY=10", "user", "")
+            val db = db()
             val demoTable = db.table<Demo4>()
             demoTable.insert(Demo4(Demo4.Item("hello")))
             assertEquals("hello", demoTable.select().first().item.name)

@@ -8,11 +8,11 @@ import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
 
-suspend fun <T : Any> Db.table(clazz: KClass<T>) = DbTable(this, clazz).also { it.initialize() }
-suspend inline fun <reified T : Any> Db.table() = table(T::class)
+suspend fun <T : Any> DbBase.table(clazz: KClass<T>) = DbTable(this, clazz).also { it.initialize() }
+suspend inline fun <reified T : Any> DbBase.table() = table(T::class)
 
-fun <T : Any> Db.tableBlocking(clazz: KClass<T>) = runBlocking { table(clazz) }
-inline fun <reified T : Any> Db.tableBlocking() = tableBlocking(T::class)
+fun <T : Any> DbBase.tableBlocking(clazz: KClass<T>) = runBlocking { table(clazz) }
+inline fun <reified T : Any> DbBase.tableBlocking() = tableBlocking(T::class)
 
 abstract class BaseDbTable<T : Any> : DbQueryable {
     abstract val table: DbTable<T>
@@ -121,14 +121,14 @@ abstract class BaseDbTable<T : Any> : DbQueryable {
     }
 }
 
-class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) : BaseDbTable<T>() {
+class DbTable<T: Any>(val db: DbBase, val clazz: KClass<T>) : BaseDbTable<T>() {
     val tableName = clazz.findAnnotation<Name>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
     val quotedTableName = db.quoteTableName(tableName)
     val columns = clazz.memberProperties.filter { it.findAnnotation<Ignore>() == null }.map { ColumnDef(db, it) }
     val columnsByName = columns.associateBy { it.name }
     fun getColumnByName(name: String) = columnsByName[name]
 
-    class ColumnDef<T : Any> internal constructor(val db: Db, val property: KProperty1<T, *>) {
+    class ColumnDef<T : Any> internal constructor(val db: DbBase, val property: KProperty1<T, *>) {
         val jclazz get() = property.returnType.jvmErasure
         val name = property.findAnnotation<Name>()?.name ?: property.name
         val quotedName = db.quoteColumnName(name)
@@ -186,7 +186,7 @@ class DbTableTransaction<T: Any>(override val table: DbTable<T>, val transaction
 }
 
 
-fun KType.toSqlType(db: Db, annotations: KAnnotatedElement): String {
+fun KType.toSqlType(db: DbBase, annotations: KAnnotatedElement): String {
     return when (this.jvmErasure) {
         Int::class -> "INTEGER"
         ByteArray::class -> "BLOB"

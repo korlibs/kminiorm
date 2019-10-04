@@ -4,21 +4,21 @@ import kotlin.internal.Exact
 import kotlin.reflect.*
 
 abstract class DbQuery<T> {
-    abstract fun toString(db: Db): String
+    abstract fun toString(db: DbQuoteable): String
     class BinOp<T, R>(val prop: KProperty1<T, R>, val literal: R, val op: String) : DbQuery<T>() {
-        override fun toString(db: Db) = "${db.quoteTableName(prop.name)}$op${db.quoteLiteral(literal)}"
+        override fun toString(db: DbQuoteable) = "${db.quoteTableName(prop.name)}$op${db.quoteLiteral(literal)}"
     }
     class Always<T> : DbQuery<T>() {
-        override fun toString(db: Db) = "1=1"
+        override fun toString(db: DbQuoteable) = "1=1"
     }
     class BinOpNode<T>(val left: DbQuery<T>, val op: String, val right: DbQuery<T>) : DbQuery<T>() {
-        override fun toString(db: Db) = "((${left.toString(db)}) $op (${right.toString(db)}))"
+        override fun toString(db: DbQuoteable) = "((${left.toString(db)}) $op (${right.toString(db)}))"
     }
     class UnOpNode<T>(val op: String, val right: DbQuery<T>) : DbQuery<T>() {
-        override fun toString(db: Db) = "($op (${right.toString(db)}))"
+        override fun toString(db: DbQuoteable) = "($op (${right.toString(db)}))"
     }
     class IN<T, R>(val prop: KProperty1<T, R>, val literal: List<R>) : DbQuery<T>() {
-        override fun toString(db: Db) = "${db.quoteTableName(prop.name)} IN (${literal.joinToString(", ") { db.quoteLiteral(it) }})"
+        override fun toString(db: DbQuoteable) = "${db.quoteTableName(prop.name)} IN (${literal.joinToString(", ") { db.quoteLiteral(it) }})"
     }
 }
 

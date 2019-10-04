@@ -10,8 +10,8 @@ import java.sql.*
 import kotlin.coroutines.*
 
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
-class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineContext = Dispatchers.IO) : DbQueryable {
-    val mapper = KotlinMapper.registerModule(KotlinModule()).registerModule(object : SimpleModule() {
+class Db(val connection: String, val user: String, val pass: String, override val dispatcher: CoroutineContext = Dispatchers.IO) : DbBase {
+    override val mapper = KotlinMapper.registerModule(KotlinModule()).registerModule(object : SimpleModule() {
         override fun setupModule(context: SetupContext) {
             addSerializer(Blob::class.java, object : JsonSerializer<Blob>() {
                 override fun serialize(value: Blob, gen: JsonGenerator, serializers: SerializerProvider) {
@@ -28,7 +28,7 @@ class Db(val connection: String, val user: String, val pass: String, val dispatc
         }
     }
 
-    suspend fun <T> transaction(callback: suspend DbTransaction.() -> T): T {
+    override suspend fun <T> transaction(callback: suspend DbTransaction.() -> T): T {
         return connectionPool.take {
             val tr = DbTransaction(this, it)
             tr.run {
@@ -42,10 +42,10 @@ class Db(val connection: String, val user: String, val pass: String, val dispatc
         }
     }
 
-    fun quoteColumnName(str: String) = _quote(str)
-    fun quoteTableName(str: String) = _quote(str)
-    fun quoteString(str: String) = _quote(str, type = '\'')
-    fun quoteLiteral(value: Any?) = when (value) {
+    override fun quoteColumnName(str: String) = _quote(str)
+    override fun quoteTableName(str: String) = _quote(str)
+    override fun quoteString(str: String) = _quote(str, type = '\'')
+    override fun quoteLiteral(value: Any?) = when (value) {
         null -> "NULL"
         is Int, is Long, is Float, is Double, is Number -> "$value"
         is String -> quoteString(value)
@@ -68,6 +68,19 @@ class Db(val connection: String, val user: String, val pass: String, val dispatc
     override suspend fun query(sql: String, vararg params: Any?) = transaction { query(sql, *params) }
 }
 
+interface DbQuoteable {
+    fun quoteColumnName(str: String): String
+    fun quoteTableName(str: String): String
+    fun quoteString(str: String): String
+    fun quoteLiteral(value: Any?): String
+}
+
+interface DbBase : DbQueryable, DbQuoteable {
+    val mapper: ObjectMapper
+    val dispatcher: CoroutineContext
+    suspend fun <T> transaction(callback: suspend DbTransaction.() -> T): T
+}
+
 val ResultSet.columnNames get() = (1..metaData.columnCount).map { metaData.getColumnName(it) }
 
 fun ResultSet.toListMap(): List<Map<String, Any?>> {
@@ -83,14 +96,14 @@ fun ResultSet.toListMap(): List<Map<String, Any?>> {
     return out
 }
 
-class DbTransaction(val db: Db, val connection: Connection) : DbQueryable {
-    suspend fun Db.commit() {
+class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
+    suspend fun DbBase.commit() {
         withContext(dispatcher) {
             this@DbTransaction.connection.commit()
         }
     }
 
-    suspend fun Db.rollback() {
+    suspend fun DbBase.rollback() {
         withContext(dispatcher) {
             this@DbTransaction.connection.rollback()
         }
