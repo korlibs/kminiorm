@@ -1,5 +1,6 @@
 package com.soywiz.kminiorm
 
+import kotlinx.coroutines.*
 import java.io.*
 import java.sql.*
 import kotlin.reflect.*
@@ -8,6 +9,9 @@ import kotlin.reflect.jvm.*
 
 suspend fun <T : Any> Db.table(clazz: KClass<T>) = DbTable(this, clazz).also { it.initialize() }
 suspend inline fun <reified T : Any> Db.table() = table(T::class)
+
+fun <T : Any> Db.tableBlocking(clazz: KClass<T>) = runBlocking { table(clazz) }
+inline fun <reified T : Any> Db.tableBlocking() = tableBlocking(T::class)
 
 abstract class BaseDbTable<T : Any> : DbQueryable {
     abstract val table: DbTable<T>
