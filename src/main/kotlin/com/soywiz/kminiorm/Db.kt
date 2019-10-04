@@ -4,9 +4,10 @@ import com.fasterxml.jackson.core.*
 import com.fasterxml.jackson.databind.*
 import com.fasterxml.jackson.databind.module.*
 import com.soywiz.kminiorm.internal.*
+import kotlinx.coroutines.*
 import java.sql.*
 
-class Db(val connection: String, val user: String, val pass: String) {
+class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
     val mapper = KotlinMapper.registerModule(object : SimpleModule() {
         override fun setupModule(context: SetupContext) {
             addSerializer(Blob::class.java, object : JsonSerializer<Blob>() {
@@ -17,12 +18,17 @@ class Db(val connection: String, val user: String, val pass: String) {
         }
     })
 
-    private val connectionPool = Pool { DriverManager.getConnection(connection, user, pass).also { it.autoCommit = false } }
+    @PublishedApi
+    internal val connectionPool = Pool {
+        withContext(dispatcher) {
+            DriverManager.getConnection(connection, user, pass).also { it.autoCommit = false }
+        }
+    }
 
-    fun <T> transaction(callback: DbTransaction.() -> T): T {
-        connectionPool.take {
+    suspend fun <T> transaction(callback: suspend DbTransaction.() -> T): T {
+        return connectionPool.take {
             val tr = DbTransaction(this, it)
-            return tr.run {
+            tr.run {
                 try {
                     callback(tr).also { this@Db.commit() }
                 } catch (e: Throwable) {
@@ -56,7 +62,7 @@ class Db(val connection: String, val user: String, val pass: String) {
         append(type)
     }
 
-    fun query(sql: String, vararg params: Any?) = transaction { query(sql, *params) }
+    override suspend fun query(sql: String, vararg params: Any?) = transaction { query(sql, *params) }
 }
 
 val ResultSet.columnNames get() = (1..metaData.columnCount).map { metaData.getColumnName(it) }
@@ -74,31 +80,37 @@ fun ResultSet.toListMap(): List<Map<String, Any?>> {
     return out
 }
 
-class DbTransaction(val db: Db, val connection: Connection) {
-    fun Db.commit() {
-        this@DbTransaction.connection.commit()
+class DbTransaction(val db: Db, val connection: Connection) : DbQueryable {
+    suspend fun Db.commit() {
+        withContext(dispatcher) {
+            this@DbTransaction.connection.commit()
+        }
     }
 
-    fun Db.rollback() {
-        this@DbTransaction.connection.rollback()
+    suspend fun Db.rollback() {
+        withContext(dispatcher) {
+            this@DbTransaction.connection.rollback()
+        }
     }
 
-    fun query(sql: String, vararg params: Any?): DbResult {
+    override suspend fun query(sql: String, vararg params: Any?): DbResult {
         //println("QUERY: $sql")
-        val statement = connection.prepareStatement(sql)
-        for (index in params.indices) {
-            val param = params[index]
-            if (param is ByteArray) {
-                statement.setBlob(index + 1, param.inputStream())
-            } else {
-                statement.setObject(index + 1, param)
+        return withContext(db.dispatcher) {
+            val statement = connection.prepareStatement(sql)
+            for (index in params.indices) {
+                val param = params[index]
+                if (param is ByteArray) {
+                    statement.setBlob(index + 1, param.inputStream())
+                } else {
+                    statement.setObject(index + 1, param)
+                }
             }
+            val resultSet = when {
+                sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
+                else -> null.also { statement.executeUpdate() }
+            }
+            DbResult(resultSet, statement)
         }
-        val resultSet = when {
-            sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
-            else -> null.also { statement.executeUpdate() }
-        }
-        return DbResult(resultSet, statement)
     }
 }
 
