@@ -3,6 +3,7 @@ package com.soywiz.kminiorm
 import kotlinx.coroutines.*
 import java.io.*
 import java.sql.*
+import java.util.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
@@ -155,6 +156,7 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) : BaseDbTable<T>() {
             is ByteArray -> value
             is String -> value
             is Number -> value
+            is UUID -> value
             else -> db.mapper.writeValueAsString(value)
         }
         //return value
@@ -164,10 +166,14 @@ class DbTable<T: Any>(val db: Db, val clazz: KClass<T>) : BaseDbTable<T>() {
         return when (value) {
             is InputStream -> value.readBytes()
             is Blob -> value.binaryStream.readBytes()
+            is UUID -> value
+            //is Number -> (value as? Number) ?: value.toString().toDoubleOrNull()
             else -> when {
-                column != null -> when {
-                    List::class.isSubclassOf(column.jclazz) || Map::class.isSubclassOf(column.jclazz) -> db.mapper.readValue(value.toString(), column.jclazz.java)
-                    else -> value
+                column != null -> when (column.jclazz) {
+                    String::class -> value.toString()
+                    Number::class -> if (value is Number) value else value.toString().toDouble()
+                    UUID::class -> value
+                    else -> db.mapper.readValue(value.toString(), column.jclazz.java)
                 }
                 else -> value
             }

@@ -45,6 +45,20 @@ class KminiOrmTest {
         }
     }
 
+    @Test
+    fun testItem() {
+        runBlocking {
+            val db = Db("jdbc:h2:mem:test2;DB_CLOSE_DELAY=10", "user", "")
+            val demoTable = db.table<Demo4>()
+            demoTable.insert(Demo4(Demo4.Item("hello")))
+            assertEquals("hello", demoTable.select().first().item.name)
+        }
+    }
+
+    data class Demo4(val item: Item){
+        data class Item(val name: String)
+    }
+
     data class Demo3(val items: List<Item>){
         data class Item(val name: String)
     }
