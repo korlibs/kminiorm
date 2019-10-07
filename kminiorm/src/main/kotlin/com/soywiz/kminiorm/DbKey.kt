@@ -11,6 +11,14 @@ import java.util.*
 import java.util.concurrent.atomic.*
 
 class DbKey : Comparable<DbKey>, Serializable {
+    private constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) {
+        require(randomValue1 and -0x1000000 == 0) { "The machine identifier must be between 0 and 16777215 (it must fit in three bytes)." }
+        require(!(checkCounter && counter and -0x1000000 != 0)) { "The counter must be between 0 and 16777215 (it must fit in three bytes)." }
+        this.timestamp = timestamp
+        this.counter = counter and LOW_ORDER_THREE_BYTES
+        this.machineIdentifier = randomValue1
+        this.processIdentifier = randomValue2
+    }
 
     /**
      * Gets the timestamp (number of seconds since the Unix epoch).
@@ -112,16 +120,6 @@ class DbKey : Comparable<DbKey>, Serializable {
 
     private constructor(timestamp: Int, counter: Int, checkCounter: Boolean) : this(timestamp, generatedMachineIdentifier, RANDOM_VALUE2, counter, checkCounter) {}
 
-    private constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int,
-                        checkCounter: Boolean) {
-        require(randomValue1 and -0x1000000 == 0) { "The machine identifier must be between 0 and 16777215 (it must fit in three bytes)." }
-        require(!(checkCounter && counter and -0x1000000 != 0)) { "The counter must be between 0 and 16777215 (it must fit in three bytes)." }
-        this.timestamp = timestamp
-        this.counter = counter and LOW_ORDER_THREE_BYTES
-        this.machineIdentifier = randomValue1
-        this.processIdentifier = randomValue2
-    }
-
     /**
      * Constructs a new instance from a 24-byte hexadecimal string representation.
      *
@@ -219,30 +217,13 @@ class DbKey : Comparable<DbKey>, Serializable {
     }
 
     override fun equals(o: Any?): Boolean {
-        if (this === o) {
-            return true
-        }
-        if (o == null || javaClass != o.javaClass) {
-            return false
-        }
-
+        if (this === o) return true
+        if (o == null || javaClass != o.javaClass) return false
         val objectId = o as DbKey?
-
-        if (counter != objectId!!.counter) {
-            return false
-        }
-        if (timestamp != objectId.timestamp) {
-            return false
-        }
-
-        if (machineIdentifier != objectId.machineIdentifier) {
-            return false
-        }
-
-        return if (processIdentifier != objectId.processIdentifier) {
-            false
-        } else true
-
+        if (counter != objectId!!.counter) return false
+        if (timestamp != objectId.timestamp) return false
+        if (machineIdentifier != objectId.machineIdentifier) return false
+        return if (processIdentifier != objectId.processIdentifier) false else true
     }
 
     override fun hashCode(): Int {
@@ -254,10 +235,6 @@ class DbKey : Comparable<DbKey>, Serializable {
     }
 
     override fun compareTo(other: DbKey): Int {
-        if (other == null) {
-            throw NullPointerException()
-        }
-
         val byteArray = toByteArray()
         val otherByteArray = other.toByteArray()
         for (i in 0 until OBJECT_ID_LENGTH) {
@@ -268,28 +245,7 @@ class DbKey : Comparable<DbKey>, Serializable {
         return 0
     }
 
-    override fun toString(): String {
-        return toHexString()
-    }
-
-    /**
-     * Gets the time of this ID, in seconds.
-     *
-     * @return the time component of this ID in seconds
-     */
-    @Deprecated("Use #getTimestamp instead")
-    fun getTimeSecond(): Int {
-        return timestamp
-    }
-
-    /**
-     * @return a string representation of the ObjectId in hexadecimal format
-     * @see ObjectId.toHexString
-     */
-    @Deprecated("use {@link #toHexString()}")
-    fun toStringMongod(): String {
-        return toHexString()
-    }
+    override fun toString(): String = toHexString()
 
     companion object {
 
@@ -336,22 +292,7 @@ class DbKey : Comparable<DbKey>, Serializable {
                 return false
             }
 
-            for (i in 0 until len) {
-                val c = hexString[i]
-                if (c >= '0' && c <= '9') {
-                    continue
-                }
-                if (c >= 'a' && c <= 'f') {
-                    continue
-                }
-                if (c >= 'A' && c <= 'F') {
-                    continue
-                }
-
-                return false
-            }
-
-            return true
+            return hexString.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' }
         }
 
         private fun legacyToBytes(timestamp: Int, machineAndProcessIdentifier: Int, counter: Int): ByteArray {
@@ -370,51 +311,6 @@ class DbKey : Comparable<DbKey>, Serializable {
             bytes[11] = int0(counter)
             return bytes
         }
-
-        // Deprecated methods
-
-        /**
-         *
-         * Creates an ObjectId using time, machine and inc values.  The Java driver used to create all ObjectIds this way, but it does not
-         * match the [ObjectId specification](http://docs.mongodb.org/manual/reference/object-id/), which requires four values, not
-         * three. This major release of the Java driver conforms to the specification, but still supports clients that are relying on the
-         * behavior of the previous major release by providing this explicit factory method that takes three parameters instead of four.
-         *
-         *
-         * Ordinary users of the driver will not need this method.  It's only for those that have written there own BSON decoders.
-         *
-         *
-         * NOTE: This will not break any application that use ObjectIds.  The 12-byte representation will be round-trippable from old to new
-         * driver releases.
-         *
-         * @param time    time in seconds
-         * @param machine machine ID
-         * @param inc     incremental value
-         * @return a new `ObjectId` created from the given values
-         * @since 2.12.0
-         */
-        @Deprecated("Use {@link #ObjectId(int, int)} instead")
-        fun createFromLegacyFormat(time: Int, machine: Int, inc: Int): DbKey {
-            return DbKey(time, machine, inc)
-        }
-
-        /**
-         * Gets the current value of the auto-incrementing counter.
-         *
-         * @return the current counter value.
-         */
-        val currentCounter: Int
-            @Deprecated("")
-            get() = NEXT_COUNTER.get() and LOW_ORDER_THREE_BYTES
-
-        /**
-         * Gets the generated process identifier.
-         *
-         * @return the process id
-         */
-        val generatedProcessIdentifier: Int
-            @Deprecated("")
-            get() = RANDOM_VALUE2.toInt()
 
         init {
             try {
@@ -494,7 +390,8 @@ fun ObjectMapper.registerDbKeyModule() {
     mapper.registerModule(SimpleModule().let { module ->
         module.addSerializer(DbKey::class.java, object : JsonSerializer<DbKey>() {
             override fun serialize(value: DbKey, gen: JsonGenerator, serializers: SerializerProvider) {
-                gen.writeObject(mapOf(OID to value.toHexString()))
+                //gen.writeObject(mapOf(OID to value.toHexString()))
+                gen.writeString(value.toHexString())
             }
         })
         module.addDeserializer(DbKey::class.java, object : JsonDeserializer<DbKey>() {

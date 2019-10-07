@@ -301,12 +301,14 @@ class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<
             is InputStream -> value.readBytes()
             is Blob -> value.binaryStream.readBytes()
             is UUID -> value
+            is DbKey -> value
             //is Number -> (value as? Number) ?: value.toString().toDoubleOrNull()
             else -> when {
                 column != null -> when (column.jclazz) {
                     String::class -> value.toString()
                     Number::class -> if (value is Number) value else value.toString().toDouble()
                     UUID::class -> value
+                    DbKey::class -> value
                     else -> db.mapper.readValue(value.toString(), column.jclazz.java)
                 }
                 else -> value
