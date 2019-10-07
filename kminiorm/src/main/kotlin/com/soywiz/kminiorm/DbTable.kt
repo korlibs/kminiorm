@@ -16,13 +16,19 @@ typealias DbTableElement = DbModel
 interface DbTable<T : DbTableElement> {
     suspend fun showColumns(): Map<String, Map<String, Any?>>
     suspend fun initialize(): DbTable<T>
+    // C
     suspend fun insert(instance: T): T
     suspend fun insert(instance: Partial<T>): DbResult = insert(instance.data)
     suspend fun insert(data: Map<String, Any?>): DbResult
+    // R
     suspend fun find(skip: Long? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Iterable<T>
     suspend fun findAll(skip: Long? = null, limit: Long? = null): Iterable<T> = find(skip = skip, limit = limit)
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query = query, limit = 1).firstOrNull()
+    // U
     suspend fun update(set: Partial<T>, increment: Partial<T>? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long
+    // D
+    suspend fun delete(limit: Long? = 1L, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Long
+
     suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R
     companion object { }
 }

@@ -256,6 +256,17 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
             append(";")
         }, *values.toTypedArray()).updateCount
     }
+
+    override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+        return query(buildString {
+            append("DELETE FROM ")
+            append(table.quotedTableName)
+            append(" WHERE ")
+            append(DbQueryBuilder.build(query).toString(_db))
+            if (limit != null) append(" LIMIT $limit")
+            append(";")
+        }).updateCount
+    }
 }
 
 interface ColumnExtra {

@@ -93,6 +93,12 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
         return result.docModified
     }
 
+    override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+        val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject()
+        val result = awaitResult<MongoClientDeleteResult> { mongo.removeDocuments(collection, rquery, it) }
+        return result.removedCount
+    }
+
     override suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R {
         println("TODO: MongoDB transactions not implemented yet")
         return callback()
