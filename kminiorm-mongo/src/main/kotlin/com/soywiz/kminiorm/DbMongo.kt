@@ -63,12 +63,15 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
     }
 
     override suspend fun insert(data: Map<String, Any?>): DbResult {
-        awaitResult<String> { db.client.insert(collection, JsonObject(data), it) }
+        val dataToInsert = data.mapToMongoJson()
+        //println("dataToInsert: $dataToInsert")
+        awaitResult<String> { db.client.insert(collection, dataToInsert, it) }
         return DbResult(mapOf("insert" to 1))
     }
 
     override suspend fun find(skip: Long?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Iterable<T> {
         val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject()
+        //println("QUERY: $rquery")
         val result = awaitResult<List<JsonObject>> { mongo.find(collection, rquery, it) }
         return result.map { objMapperForMongo.convertValue<T>(it, clazz.java) }
     }
@@ -81,7 +84,7 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
                     DbQueryBuilder.build(query).toMongoMap().toJsonObject(),
                     JsonObject(
                             mapOf(
-                                    "\$set" to set.data
+                                    "\$set" to set.data.mapToMongo()
                             )
                     ),
                     it
@@ -94,6 +97,17 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
         println("TODO: MongoDB transactions not implemented yet")
         return callback()
     }
+}
+
+fun Map<String, Any?>.mapToMongoJson() = JsonObject(mapToMongo())
+
+fun convertToMongoDb(value: Any?): Any? = when (value) {
+    is DbKey -> ObjectId(value.toHexString())
+    else -> value
+}
+
+fun Map<String, Any?>.mapToMongo(): Map<String, Any?> {
+    return this.entries.associate { (key, value) -> key to convertToMongoDb(value) }
 }
 
 /*
@@ -158,6 +172,8 @@ sealed class MongoQueryNode {
 
     class PropComparison<T>(val op: String, val left: KProperty<T>, val value: T) : MongoQueryNode() {
         override fun toJsonObject(): JsonObject {
+            val value = convertToMongoDb(value)
+
             val v: Any? = when (value) {
                 is ObjectId -> JsonObject(mapOf(JsonObjectCodec.OID_FIELD to value.toHexString()))
                 else -> value
