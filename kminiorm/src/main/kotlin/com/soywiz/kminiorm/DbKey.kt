@@ -165,14 +165,17 @@ class DbKey : Comparable<DbKey>, Serializable {
  * Create a new object id.
  */
 
-fun ObjectMapper.registerDbKeyModule() {
+fun ObjectMapper.registerDbKeyModule(serializeAsString: Boolean = true) {
     val mapper = this
     val OID = "\$oid"
     mapper.registerModule(SimpleModule().let { module ->
         module.addSerializer(DbKey::class.java, object : JsonSerializer<DbKey>() {
             override fun serialize(value: DbKey, gen: JsonGenerator, serializers: SerializerProvider) {
-                gen.writeObject(mapOf(OID to value.toHexString()))
-                //gen.writeString(value.toHexString())
+                if (serializeAsString) {
+                    gen.writeString(value.toHexString())
+                } else {
+                    gen.writeObject(mapOf(OID to value.toHexString()))
+                }
             }
         })
         module.addDeserializer(DbKey::class.java, object : JsonDeserializer<DbKey>() {

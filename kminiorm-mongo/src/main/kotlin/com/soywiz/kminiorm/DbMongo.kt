@@ -241,5 +241,5 @@ private val objMapperForMongo: ObjectMapper = Json.mapper.copy().also { mapper -
             }
         })
     })
-    mapper.registerDbKeyModule()
+    mapper.registerDbKeyModule(serializeAsString = false)
 }
