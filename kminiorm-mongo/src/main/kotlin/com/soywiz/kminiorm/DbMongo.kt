@@ -30,11 +30,15 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
     }
 
     override suspend fun initialize(): DbTable<T> = this.apply {
-        awaitResult<Void> { db.client.createCollection(collection, it) }
+        kotlin.runCatching {
+            //awaitResult<Void> { db.client.createCollection(collection, it) }
+            db.client.createCollection(collection) { }
+        }
 
         // Ensure indices
         for (column in ormTableInfo.columns) {
             if (column.isIndex || column.isUnique) {
+                /*
                 awaitResult<Void> { res ->
                     db.client.createIndexWithOptions(
                             collection,
@@ -43,6 +47,12 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
                             res
                     )
                 }
+                 */
+                db.client.createIndexWithOptions(
+                        collection,
+                        JsonObject(mapOf(column.name to +1)),
+                        IndexOptions().unique(column.isUnique).background(true)
+                ) { }
             }
         }
     }
@@ -53,7 +63,7 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
     }
 
     override suspend fun insert(data: Map<String, Any?>): DbResult {
-        awaitResult<String> { db.client.insert(collection, JsonObject(), it) }
+        awaitResult<String> { db.client.insert(collection, JsonObject(data), it) }
         return DbResult(mapOf("insert" to 1))
     }
 
