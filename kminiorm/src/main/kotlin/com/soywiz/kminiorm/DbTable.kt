@@ -4,7 +4,10 @@ interface DbModel {
     companion object { }
     @DbPrimary
     val _id: DbKey
+
+    open class Base(override val _id: DbKey = DbKey()) : DbModel
 }
+
 
 typealias DbTableElement = DbModel
 //typealias DbTableElement = Any

@@ -57,24 +57,21 @@ class KminiOrmTest {
         }
     }
 
-    data class Demo4(val item: Item){
+    data class Demo4(val item: Item) : DbModel.Base() {
         data class Item(val name: String)
     }
 
-    data class Demo3(val items: List<Item>){
+    data class Demo3(val items: List<Item>) : DbModel.Base() {
         data class Item(val name: String)
     }
 
-    data class Demo2(val bytes: ByteArray, val time: Date = Date())
+    data class Demo2(val bytes: ByteArray, val time: Date = Date()) : DbModel.Base()
 
     data class Demo(
-        //val _id: String = UUID.randomUUID().toString(),
-            @DbUnique val _id: UUID = UUID.randomUUID(),
+            @DbUnique override val _id: DbKey = DbKey(),
             @DbMaxLength(256)
 
-        //@Name("test2")
-        @DbIndex val test: String
-    )
-
-
+            //@Name("test2")
+            @DbIndex val test: String
+    ) : DbModel
 }
