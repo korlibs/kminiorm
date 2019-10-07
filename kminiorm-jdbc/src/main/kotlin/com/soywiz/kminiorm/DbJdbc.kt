@@ -3,6 +3,7 @@ package com.soywiz.kminiorm
 import com.fasterxml.jackson.core.*
 import com.fasterxml.jackson.databind.*
 import com.fasterxml.jackson.databind.module.*
+import com.fasterxml.jackson.databind.node.*
 import com.fasterxml.jackson.module.kotlin.*
 import com.soywiz.kminiorm.internal.*
 import kotlinx.coroutines.*
@@ -46,7 +47,7 @@ fun <T> DbQuery<T>.toString(db: DbQuoteable): String = when (this) {
     else -> kotlin.TODO()
 }
 
-interface DbBase : DbQueryable, DbQuoteable {
+interface DbBase : Db, DbQueryable, DbQuoteable {
     val mapper: ObjectMapper
     val dispatcher: CoroutineContext
     suspend fun <T> transaction(callback: suspend DbTransaction.() -> T): T
@@ -54,15 +55,20 @@ interface DbBase : DbQueryable, DbQuoteable {
 
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
 class JdbcDb(val connection: String, val user: String, val pass: String, override val dispatcher: CoroutineContext = Dispatchers.IO) : DbBase {
-    override val mapper = KotlinMapper.registerModule(KotlinModule()).registerModule(object : SimpleModule() {
-        override fun setupModule(context: SetupContext) {
-            addSerializer(Blob::class.java, object : JsonSerializer<Blob>() {
-                override fun serialize(value: Blob, gen: JsonGenerator, serializers: SerializerProvider) {
-                    gen.writeBinary(value.binaryStream.readBytes())
-                }
-            })
-        }
-    })
+    override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz).initialize()
+
+    override val mapper = KotlinMapper.registerModule(KotlinModule()).also { mapper ->
+        mapper.registerModule(object : SimpleModule() {
+            override fun setupModule(context: SetupContext) {
+                addSerializer(Blob::class.java, object : JsonSerializer<Blob>() {
+                    override fun serialize(value: Blob, gen: JsonGenerator, serializers: SerializerProvider) {
+                        gen.writeBinary(value.binaryStream.readBytes())
+                    }
+                })
+            }
+        })
+        mapper.registerDbKeyModule()
+    }
 
     @PublishedApi
     internal val connectionPool = InternalDbPool {

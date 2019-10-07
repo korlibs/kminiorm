@@ -17,7 +17,7 @@ fun Vertx.createMongo(connectionString: String): DbMongo =
         DbMongo(MongoClient.createShared(this, JsonObject(mapOf("connection_string" to connectionString))))
 
 class DbMongo(val client: MongoClient) : Db {
-    override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = DbTableMongo(this, clazz)
+    override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = DbTableMongo(this, clazz).initialize()
 }
 
 class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : DbTable<T> {
@@ -200,7 +200,7 @@ fun <T> DbQuery<T>.toMongoMap(): MongoQueryNode = when (this) {
     else -> TODO()
 }
 
-private val objMapperForMongo = Json.mapper.copy().let { mapper ->
+private val objMapperForMongo: ObjectMapper = Json.mapper.copy().also { mapper ->
     mapper.registerModule(SimpleModule().let { module ->
         module.addSerializer(ObjectId::class.java, object : JsonSerializer<ObjectId>() {
             override fun serialize(value: ObjectId, gen: JsonGenerator, serializers: SerializerProvider) {
@@ -215,19 +215,5 @@ private val objMapperForMongo = Json.mapper.copy().let { mapper ->
             }
         })
     })
-
-    mapper.registerModule(SimpleModule().let { module ->
-        module.addSerializer(DbKey::class.java, object : JsonSerializer<DbKey>() {
-            override fun serialize(value: DbKey, gen: JsonGenerator, serializers: SerializerProvider) {
-                gen.writeObject(mapOf(JsonObjectCodec.OID_FIELD to value.toHexString()))
-            }
-        })
-        module.addDeserializer(DbKey::class.java, object : JsonDeserializer<DbKey>() {
-            override fun deserialize(p: JsonParser, ctxt: DeserializationContext): DbKey {
-                val node = p.codec.readTree<TreeNode>(p)
-                if (node is TextNode) return DbKey(node.textValue())
-                return DbKey((node.get(JsonObjectCodec.OID_FIELD) as TextNode).textValue())
-            }
-        })
-    })
+    mapper.registerDbKeyModule()
 }

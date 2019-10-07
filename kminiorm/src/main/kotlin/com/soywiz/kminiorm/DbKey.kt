@@ -1,5 +1,9 @@
 package com.soywiz.kminiorm
 
+import com.fasterxml.jackson.core.*
+import com.fasterxml.jackson.databind.*
+import com.fasterxml.jackson.databind.module.*
+import com.fasterxml.jackson.databind.node.*
 import java.io.Serializable
 import java.nio.*
 import java.security.*
@@ -483,3 +487,22 @@ class DbKey : Comparable<DbKey>, Serializable {
 /**
  * Create a new object id.
  */
+
+fun ObjectMapper.registerDbKeyModule() {
+    val mapper = this
+    val OID = "\$oid"
+    mapper.registerModule(SimpleModule().let { module ->
+        module.addSerializer(DbKey::class.java, object : JsonSerializer<DbKey>() {
+            override fun serialize(value: DbKey, gen: JsonGenerator, serializers: SerializerProvider) {
+                gen.writeObject(mapOf(OID to value.toHexString()))
+            }
+        })
+        module.addDeserializer(DbKey::class.java, object : JsonDeserializer<DbKey>() {
+            override fun deserialize(p: JsonParser, ctxt: DeserializationContext): DbKey {
+                val node = p.codec.readTree<TreeNode>(p)
+                if (node is TextNode) return DbKey(node.textValue())
+                return DbKey((node.get(OID) as TextNode).textValue())
+            }
+        })
+    })
+}
