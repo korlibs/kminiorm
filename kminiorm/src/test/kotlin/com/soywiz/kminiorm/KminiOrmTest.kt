@@ -5,7 +5,7 @@ import java.util.*
 import kotlin.test.*
 
 class KminiOrmTest {
-    fun db() = Db("jdbc:h2:mem:test;DB_CLOSE_DELAY=10", "user", "")
+    fun db() = JdbcDb("jdbc:h2:mem:test;DB_CLOSE_DELAY=10", "user", "")
 
     @Test
     fun test() {
@@ -16,14 +16,14 @@ class KminiOrmTest {
             demoTable.insert(Demo(test = "world"))
             //demoTable.insert(Partial(Demo::test to "hello"))
             //query("insert into ${demoTable.quotedTableName} (\"test\") VALUES (?)", "hello")
-            println(demoTable.select { Demo::test eq "test" })
-            println(demoTable.select { Demo::test eq "hello" })
-            println(demoTable.select { Demo::test IN listOf("hello") })
-            println(demoTable.select { NOT(Demo::test IN listOf("hello")) })
-            println(demoTable.select())
+            println(demoTable.find { Demo::test eq "test" })
+            println(demoTable.find { Demo::test eq "hello" })
+            println(demoTable.find { Demo::test IN listOf("hello") })
+            println(demoTable.find { NOT(Demo::test IN listOf("hello")) })
+            println(demoTable.find())
             //demoTable.update(Partial(Demo::test to "hi")) { (Demo::test eq "hello") OR (Demo::test eq "world") }
             demoTable.update(Partial(Demo::test to "hi")) { Demo::test IN listOf("hello", "world") }
-            println(demoTable.select())
+            println(demoTable.find())
         }
     }
 
@@ -33,7 +33,7 @@ class KminiOrmTest {
             val db = db()
             val demoTable = db.table<Demo2>()
             demoTable.insert(Demo2(bytes = byteArrayOf(1, 2, 3, 4)))
-            assertEquals(byteArrayOf(1, 2, 3, 4).toList(), demoTable.select().first().bytes.toList())
+            assertEquals(byteArrayOf(1, 2, 3, 4).toList(), demoTable.find().first().bytes.toList())
         }
     }
 
@@ -43,7 +43,7 @@ class KminiOrmTest {
             val db = db()
             val demoTable = db.table<Demo3>()
             demoTable.insert(Demo3(listOf(Demo3.Item("hello"), Demo3.Item("world"))))
-            assertEquals(listOf("hello", "world"), demoTable.select().first().items.map { it.name })
+            assertEquals(listOf("hello", "world"), demoTable.find().first().items.map { it.name })
         }
     }
 
@@ -53,7 +53,7 @@ class KminiOrmTest {
             val db = db()
             val demoTable = db.table<Demo4>()
             demoTable.insert(Demo4(Demo4.Item("hello")))
-            assertEquals("hello", demoTable.select().first().item.name)
+            assertEquals("hello", demoTable.find().first().item.name)
         }
     }
 
@@ -69,11 +69,11 @@ class KminiOrmTest {
 
     data class Demo(
         //val _id: String = UUID.randomUUID().toString(),
-        @Unique val _id: UUID = UUID.randomUUID(),
-        @MaxLength(256)
+            @DbUnique val _id: UUID = UUID.randomUUID(),
+            @DbMaxLength(256)
 
         //@Name("test2")
-        @Index val test: String
+        @DbIndex val test: String
     )
 
 

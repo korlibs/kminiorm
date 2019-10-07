@@ -1,1 +1,5 @@
-rootProject.name = 'kminiorm'
+rootProject.name = 'kminiorm-root'
+
+include ":kminiorm"
+include ":kminiorm-jdbc"
+include ":kminiorm-mongo"

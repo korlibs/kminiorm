@@ -1,19 +1,19 @@
 package com.soywiz.kminiorm
 
 @Target(AnnotationTarget.PROPERTY)
-annotation class MaxLength(val length: Int)
+annotation class DbMaxLength(val length: Int)
 
 @Target(AnnotationTarget.PROPERTY)
-annotation class Name(val name: String)
+annotation class DbName(val name: String)
 
 @Target(AnnotationTarget.PROPERTY)
-annotation class Unique
+annotation class DbUnique
 
 @Target(AnnotationTarget.PROPERTY)
-annotation class Primary
+annotation class DbPrimary
 
 @Target(AnnotationTarget.PROPERTY)
-annotation class Index
+annotation class DbIndex
 
 @Target(AnnotationTarget.PROPERTY)
-annotation class Ignore
+annotation class DbIgnore

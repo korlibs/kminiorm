@@ -1,7 +1,6 @@
 package com.soywiz.kminiorm.internal
 
-@PublishedApi
-internal class Pool<T>(@PublishedApi internal val generate: suspend () -> T) {
+class InternalDbPool<T>(@PublishedApi internal val generate: suspend () -> T) {
     @PublishedApi
     internal val items = arrayListOf<T>()
 
