@@ -3,7 +3,6 @@ package com.soywiz.kminiorm
 import com.fasterxml.jackson.core.*
 import com.fasterxml.jackson.databind.*
 import com.fasterxml.jackson.databind.module.*
-import com.fasterxml.jackson.databind.node.*
 import com.fasterxml.jackson.module.kotlin.*
 import com.soywiz.kminiorm.internal.*
 import kotlinx.coroutines.*
@@ -237,24 +236,20 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
         }, table.clazz.java) }
     }
 
-    override suspend fun update(set: Partial<T>, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        if (increment != null) {
-            error("DbJdbc.update.increment not implemented yet")
-        }
-        val entries = table.toColumnMap(set.data).entries
-        val keys = entries.map { it.key }
-        val values = entries.map { table.serializeColumn(it.value, it.key) }
+    override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+        val setEntries = (set?.let { table.toColumnMap(it.data).entries } ?: setOf()).toList()
+        val incrEntries = (increment?.let { table.toColumnMap(it.data).entries } ?: setOf()).toList()
+
         return query(buildString {
             append("UPDATE ")
             append(table.quotedTableName)
             append(" SET ")
-            append(keys.joinToString(", ") { "${it.quotedName}=?" })
+            append((setEntries.map { "${it.key.quotedName}=?" } + incrEntries.map { "${it.key.quotedName}=${it.key.quotedName}+?" }).joinToString(", "))
             append(" WHERE ")
-
             append(DbQueryBuilder.build(query).toString(_db))
             if (limit != null) append(" LIMIT $limit")
             append(";")
-        }, *values.toTypedArray()).updateCount
+        }, *((setEntries + incrEntries).map { table.serializeColumn(it.value, it.key) }).toTypedArray()).updateCount
     }
 
     override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {

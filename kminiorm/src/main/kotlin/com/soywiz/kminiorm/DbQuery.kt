@@ -18,13 +18,13 @@ abstract class DbQuery<T> {
     class Raw<T>(val map: Map<String, Any?>) : DbQuery<T>()
 }
 
-
 open class DbQueryBuilder<T> {
     companion object : DbQueryBuilder<Any>() {
         fun <T> builder() = DbQueryBuilder as DbQueryBuilder<T>
         fun <T> build(query: DbQueryBuilder<T>.() -> DbQuery<T>) = query(builder())
     }
 
+    fun id(id: DbKey) = DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ)
     fun raw(map: Map<String, Any?>) = DbQuery.Raw<T>(map)
     infix fun DbQuery<T>.AND(that: DbQuery<T>) = DbQuery.BinOpNode(this, DbQueryBinOp.AND, that)
     infix fun DbQuery<T>.OR(that: DbQuery<T>) = DbQuery.BinOpNode(this, DbQueryBinOp.OR, that)

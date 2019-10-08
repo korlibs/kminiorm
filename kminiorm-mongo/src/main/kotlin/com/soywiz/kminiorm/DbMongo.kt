@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.*
 import com.fasterxml.jackson.databind.*
 import com.fasterxml.jackson.databind.module.*
 import com.fasterxml.jackson.databind.node.*
+import com.fasterxml.jackson.module.kotlin.*
 import io.vertx.core.*
 import io.vertx.core.json.*
 import io.vertx.ext.mongo.*
@@ -76,17 +77,19 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
         return result.map { objMapperForMongo.convertValue<T>(it, clazz.java) }
     }
 
-    override suspend fun update(set: Partial<T>, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        if (increment != null) error("DbMongo.update.increment not implemented yet!")
+    override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+        val updateMap = mutableMapOf<String, Any?>().also { map ->
+            val setData = (set?.data?.mapToMongo() ?: mapOf())
+            val incData = (increment?.data?.mapToMongo() ?: mapOf())
+            if (setData.isNotEmpty()) map["\$set"] = setData
+            if (incData.isNotEmpty()) map["\$inc"] = incData
+        }
+
         val result = awaitResult<MongoClientUpdateResult> {
             mongo.updateCollection(
                     collection,
                     DbQueryBuilder.build(query).toMongoMap().toJsonObject(),
-                    JsonObject(
-                            mapOf(
-                                    "\$set" to set.data.mapToMongo()
-                            )
-                    ),
+                    JsonObject(updateMap),
                     it
             )
         }
@@ -233,6 +236,7 @@ fun <T> DbQuery<T>.toMongoMap(): MongoQueryNode = when (this) {
 }
 
 private val objMapperForMongo: ObjectMapper = Json.mapper.copy().also { mapper ->
+    mapper.registerModule(KotlinModule())
     mapper.registerModule(SimpleModule().let { module ->
         module.addSerializer(ObjectId::class.java, object : JsonSerializer<ObjectId>() {
             override fun serialize(value: ObjectId, gen: JsonGenerator, serializers: SerializerProvider) {
