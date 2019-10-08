@@ -2,4 +2,4 @@ package com.soywiz.kminiorm
 
 import kotlinx.coroutines.*
 
-fun suspendTest(block: suspend () -> Unit): Unit = runBlocking { block() }
+inline fun suspendTest(noinline block: suspend () -> Unit): Unit = runBlocking { block() }

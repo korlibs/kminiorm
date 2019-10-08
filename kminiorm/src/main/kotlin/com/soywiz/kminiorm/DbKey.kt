@@ -1,16 +1,13 @@
 package com.soywiz.kminiorm
 
-import com.fasterxml.jackson.core.*
-import com.fasterxml.jackson.databind.*
-import com.fasterxml.jackson.databind.module.*
-import com.fasterxml.jackson.databind.node.*
+import com.soywiz.kminiorm.typer.*
 import java.io.Serializable
 import java.nio.*
 import java.security.*
 import java.util.*
 import java.util.concurrent.atomic.*
 
-// From MongoDB ObjectId
+// From MongoDB DbKey
 class DbKey : Comparable<DbKey>, Serializable {
     private constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) {
         require(randomValue1 and -0x1000000 == 0) { "The machine identifier must be between 0 and 16777215 (it must fit in three bytes)." }
@@ -45,7 +42,7 @@ class DbKey : Comparable<DbKey>, Serializable {
         assert(buffer.remaining() >= OBJECT_ID_LENGTH) { "buffer.remaining() >=12" }
 
         // Note: Cannot use ByteBuffer.getInt because it depends on tbe buffer's byte order
-        // and ObjectId's are always in big-endian order.
+        // and DbKey's are always in big-endian order.
         timestamp = makeInt(buffer.get(), buffer.get(), buffer.get(), buffer.get())
         machineIdentifier = makeInt(0.toByte(), buffer.get(), buffer.get(), buffer.get())
         processIdentifier = makeShort(buffer.get(), buffer.get())
@@ -136,7 +133,9 @@ class DbKey : Comparable<DbKey>, Serializable {
         }
 
         private fun parseHexString(s: String): ByteArray {
-            require(isValid(s)) { "invalid hexadecimal representation of an ObjectId: [$s]" }
+            require(isValid(s)) {
+                "invalid hexadecimal representation of an DbKey: [$s]"
+            }
             val b = ByteArray(OBJECT_ID_LENGTH)
             for (i in b.indices) b[i] = Integer.parseInt(s.substring(i * 2, i * 2 + 2), 16).toByte()
             return b
@@ -165,6 +164,7 @@ class DbKey : Comparable<DbKey>, Serializable {
  * Create a new object id.
  */
 
+/*
 fun ObjectMapper.registerDbKeyModule(serializeAsString: Boolean = true) {
     val mapper = this
     val OID = "\$oid"
@@ -187,3 +187,17 @@ fun ObjectMapper.registerDbKeyModule(serializeAsString: Boolean = true) {
         })
     })
 }
+*/
+
+fun Typer.withDbKeyTyperUntyper(): Typer = this.withTyperUntyper<DbKey>(
+        typer = {
+            when (it) {
+                is DbKey -> it
+                is String -> DbKey(it)
+                else -> DbKey()
+            }
+        },
+        untyper = {
+            it.toHexString()
+        }
+)

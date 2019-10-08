@@ -30,11 +30,11 @@ class PartialCombiner<T : Any>(val clazz: KClass<T>) {
     private val membersByName by lazy { clazz.members.filterIsInstance<KProperty1<T, *>>().associateBy { it.name } }
     val constructor by lazy { clazz.primaryConstructor ?: error("Class $clazz doesn't have a primary constructor") }
 
-    fun createEmpty(): T = KotlinMapper.createDefault(clazz.starProjectedType) as T
+    fun createEmpty(): T = DbTyper.createDefault(clazz.starProjectedType) as T
 
     fun create(partial: Partial<T>): T = constructor.call(*constructor.valueParameters.map {
         val member = membersByName[it.name] ?: error("Unmatched property ${it.name}")
-        if (partial.has(member)) partial[member] else KotlinMapper.createDefault(member.returnType)
+        if (partial.has(member)) partial[member] else DbTyper.createDefault(member.returnType)
     }.toTypedArray())
 
     fun combine(item: T, partial: Partial<T>): T = constructor.call(*constructor.valueParameters.map {

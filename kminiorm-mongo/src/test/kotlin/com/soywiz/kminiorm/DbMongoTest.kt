@@ -1,6 +1,5 @@
 package com.soywiz.kminiorm
 
-import io.vertx.core.*
 import kotlin.test.*
 
 class DbMongoTest {
@@ -10,8 +9,7 @@ class DbMongoTest {
     @Test
     //@Ignore
     fun test() = suspendTest {
-        val vertx = Vertx.vertx()
-        val mongo = vertx.createMongo("mongodb://127.0.0.1:27017/kminiormtest")
+        val mongo = DbMongo("mongodb://127.0.0.1:27017/kminiormtest")
         val demos = mongo.table<Demo>()
         val demo = demos.insert(Demo(demo = HELLO))
         val demo2 = demos.findOne { Demo::_id eq demo._id }

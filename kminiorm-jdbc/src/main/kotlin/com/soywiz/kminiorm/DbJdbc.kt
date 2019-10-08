@@ -1,14 +1,14 @@
 package com.soywiz.kminiorm
 
-import com.fasterxml.jackson.core.*
-import com.fasterxml.jackson.databind.*
-import com.fasterxml.jackson.databind.module.*
-import com.fasterxml.jackson.module.kotlin.*
 import com.soywiz.kminiorm.internal.*
+import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
 import java.io.*
 import java.sql.*
+import java.text.*
+import java.time.*
 import java.util.*
+import java.util.Date
 import kotlin.coroutines.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
@@ -43,11 +43,10 @@ fun <T> DbQuery<T>.toString(db: DbQuoteable): String = when (this) {
     is DbQuery.UnOpNode<*> -> "(${op.toSqlString()} (${right.toString(db)}))"
     is DbQuery.IN<*, *> -> "${db.quoteTableName(prop.name)} IN (${literal.joinToString(", ") { db.quoteLiteral(it) }})"
     is DbQuery.Raw<*> -> TODO()
-    else -> kotlin.TODO()
+    else -> TODO()
 }
 
 interface DbBase : Db, DbQueryable, DbQuoteable {
-    val mapper: ObjectMapper
     val dispatcher: CoroutineContext
     suspend fun <T> transaction(callback: suspend DbTransaction.() -> T): T
 }
@@ -55,19 +54,6 @@ interface DbBase : Db, DbQueryable, DbQuoteable {
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
 class JdbcDb(val connection: String, val user: String, val pass: String, override val dispatcher: CoroutineContext = Dispatchers.IO) : DbBase {
     override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz).initialize()
-
-    override val mapper = KotlinMapper.registerModule(KotlinModule()).also { mapper ->
-        mapper.registerModule(object : SimpleModule() {
-            override fun setupModule(context: SetupContext) {
-                addSerializer(Blob::class.java, object : JsonSerializer<Blob>() {
-                    override fun serialize(value: Blob, gen: JsonGenerator, serializers: SerializerProvider) {
-                        gen.writeBinary(value.binaryStream.readBytes())
-                    }
-                })
-            }
-        })
-        mapper.registerDbKeyModule()
-    }
 
     @PublishedApi
     internal val connectionPool = InternalDbPool {
@@ -200,7 +186,7 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
     }
 
     override suspend fun insert(instance: T): T {
-        insert(_db.mapper.convertValueToMap(instance))
+        insert(JdbcDbTyper.untype(instance) as Map<String, Any?>)
         return instance
     }
 
@@ -231,9 +217,9 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
             if (limit != null) append(" LIMIT $limit")
             if (skip != null) append(" OFFSET $skip")
             append(";")
-        }).map { _db.mapper.convertValue(it.mapValues { (key, value) ->
+        }).map { JdbcDbTyper.type(it.mapValues { (key, value) ->
             table.deserializeColumn(value, table.getColumnByName(key), key)
-        }, table.clazz.java) }
+        }, table.clazz) }
     }
 
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
@@ -297,7 +283,7 @@ class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<
             is String -> value
             is Number -> value
             is UUID -> value
-            else -> db.mapper.writeValueAsString(value)
+            else -> MiniJson.stringify(JsonTyper.untype(value))
         }
         //return value
     }
@@ -308,6 +294,9 @@ class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<
             is Blob -> value.binaryStream.readBytes()
             is UUID -> value
             is DbKey -> value
+            is Timestamp -> Date(value.time)
+            is Date -> value
+            is LocalDate -> value
             //is Number -> (value as? Number) ?: value.toString().toDoubleOrNull()
             else -> when {
                 column != null -> when (column.jclazz) {
@@ -315,7 +304,9 @@ class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<
                     Number::class -> if (value is Number) value else value.toString().toDouble()
                     UUID::class -> value
                     DbKey::class -> value
-                    else -> db.mapper.readValue(value.toString(), column.jclazz.java)
+                    Date::class -> value
+                    LocalDate::class -> value
+                    else -> JsonTyper.type(MiniJson.parse(value.toString()) ?: Unit, column.jclazz)
                 }
                 else -> value
             }
@@ -337,6 +328,7 @@ fun KType.toSqlType(db: DbBase, annotations: KAnnotatedElement): String {
     return when (this.jvmErasure) {
         Int::class -> "INTEGER"
         ByteArray::class -> "BLOB"
+        Date::class -> "TIMESTAMP"
         String::class -> {
             val maxLength = annotations.findAnnotation<DbMaxLength>()
             //if (maxLength != null) "VARCHAR(${maxLength.length})" else "TEXT"
@@ -354,3 +346,90 @@ class JdbcDbResult(
     override val updateCount: Long get() = statement.updateCount.toLong()
     override fun toString(): String = data.toString()
 }
+
+private val JsonTyper = Typer()
+        .withTyperUntyper<Date>(
+                typer = {
+                    when (it) {
+                        is String -> SimpleDateFormat.getDateTimeInstance().parse(it.toString())
+                        is Date -> it
+                        else -> TODO()
+                    }
+                },
+                untyper = {
+                    SimpleDateFormat.getDateTimeInstance().format(it)
+                }
+        )
+
+private val JdbcDbTyper = Typer()
+        .withDbKeyTyperUntyper()
+        .withTyperUntyper<UUID>(
+                typer = {
+                    when (it) {
+                        is ByteArray -> UUID.nameUUIDFromBytes(it)
+                        is String -> UUID.fromString(it)
+                        is UUID -> it
+                        else -> UUID.randomUUID()
+                    }
+                },
+                untyper = {
+                    it.toString()
+                }
+        )
+        .withTyperUntyper<Date>(
+                typer = {
+                    when (it) {
+                        is String -> Date(Timestamp.valueOf(it).time)
+                        is LocalDate -> Date.from(it.atStartOfDay(ZoneId.systemDefault()).toInstant())
+                        is Date -> it
+                        else -> Date(0L)
+                    }
+                },
+                untyper = {
+                    Timestamp(it.time).toString()
+                }
+        )
+        .withTyperUntyper<Timestamp>(
+                typer = {
+                    when (it) {
+                        is String -> Timestamp.valueOf(it)
+                        is LocalDate -> Timestamp(Date.from(it.atStartOfDay(ZoneId.systemDefault()).toInstant()).time)
+                        is Date -> Timestamp(it.time)
+                        is Timestamp -> it
+                        else -> Timestamp(0L)
+                    }
+                },
+                untyper = {
+                    it.toString()
+                }
+        )
+        /*
+        .withTyperUntyper<LocalDate>(
+                typer = {
+                    when (it) {
+                        is String, is Date -> {
+                            val date = if (it is String) timestampFormat.parse(it) else it as Date
+                            date.toInstant().atZone(ZoneId.systemDefault()).toLocalDate()
+                        }
+                        is LocalDate -> it
+                        else -> LocalDate.EPOCH
+                    }
+                },
+                untyper = {
+                    timestampFormat.format(it)
+                }
+        )
+        */
+        .withTyperUntyper<ByteArray>(
+                typer = {
+                    when (it) {
+                        is Blob -> it.binaryStream.readBytes()
+                        is InputStream -> it.readBytes()
+                        is ByteArray -> it
+                        else -> byteArrayOf()
+                    }
+                },
+                untyper = {
+                    it
+                }
+        )
