@@ -10,12 +10,21 @@ enum class DbQueryUnOp {
     NOT
 }
 abstract class DbQuery<T> {
-    class Always<T> : DbQuery<T>()
-    class BinOp<T, R>(val prop: KProperty1<T, R>, val literal: R, val op: DbQueryBinOp) : DbQuery<T>()
-    class BinOpNode<T>(val left: DbQuery<T>, val op: DbQueryBinOp, val right: DbQuery<T>) : DbQuery<T>()
-    class UnOpNode<T>(val op: DbQueryUnOp, val right: DbQuery<T>) : DbQuery<T>()
-    class IN<T, R>(val prop: KProperty1<T, R>, val literal: List<R>) : DbQuery<T>()
-    class Raw<T>(val map: Map<String, Any?>) : DbQuery<T>()
+    class Always<T> : DbQuery<T>() {
+        override fun toString() = "Always"
+        override fun hashCode(): Int = 0
+        override fun equals(other: Any?): Boolean = other is Always<*>
+    }
+    class Never<T> : DbQuery<T>() {
+        override fun toString() = "Never"
+        override fun hashCode(): Int = 0
+        override fun equals(other: Any?): Boolean = other is Never<*>
+    }
+    data class BinOp<T, R>(val prop: KProperty1<T, R>, val literal: R, val op: DbQueryBinOp) : DbQuery<T>()
+    data class BinOpNode<T>(val left: DbQuery<T>, val op: DbQueryBinOp, val right: DbQuery<T>) : DbQuery<T>()
+    data class UnOpNode<T>(val op: DbQueryUnOp, val right: DbQuery<T>) : DbQuery<T>()
+    data class IN<T, R>(val prop: KProperty1<T, R>, val literal: List<R>) : DbQuery<T>()
+    data class Raw<T>(val map: Map<String, Any?>) : DbQuery<T>()
 }
 
 open class DbQueryBuilder<T> {
@@ -38,4 +47,5 @@ open class DbQueryBuilder<T> {
     infix fun <R : Comparable<R>> KProperty1<@Exact T, @Exact R>.ge(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.GE)
     infix fun <R : Comparable<R>> KProperty1<@Exact T, @Exact R>.le(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.LE)
     val everything get() = DbQuery.Always<T>()
+    val nothing get() = DbQuery.Never<T>()
 }

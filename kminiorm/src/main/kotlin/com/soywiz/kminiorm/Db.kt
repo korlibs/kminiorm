@@ -43,7 +43,13 @@ class ColumnDef<T : Any>(val property: KProperty1<T, *>) {
     val name = property.findAnnotation<DbName>()?.name ?: property.name
     val isNullable get() = property.returnType.isMarkedNullable
     val isUnique = property.findAnnotation<DbUnique>() != null
+    val isPrimary = property.findAnnotation<DbPrimary>() != null
     val isIndex = property.findAnnotation<DbIndex>() != null
+    val indexDirection get() =
+        property.findAnnotation<DbPrimary>()?.direction
+                ?: property.findAnnotation<DbUnique>()?.direction
+                ?: property.findAnnotation<DbIndex>()?.direction
+                ?: DbIndexDirection.ASC
 }
 
 class OrmTableInfo<T : Any>(val clazz: KClass<T>) {

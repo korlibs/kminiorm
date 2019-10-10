@@ -39,6 +39,7 @@ fun DbQueryUnOp.toSqlString() = when (this) {
 fun <T> DbQuery<T>.toString(db: DbQuoteable): String = when (this) {
     is DbQuery.BinOp<*, *> -> "${db.quoteTableName(prop.name)}${op.toSqlString()}${db.quoteLiteral(literal)}"
     is DbQuery.Always<*> -> "1=1"
+    is DbQuery.Never<*> -> "1=0"
     is DbQuery.BinOpNode<*> -> "((${left.toString(db)}) ${op.toSqlString()} (${right.toString(db)}))"
     is DbQuery.UnOpNode<*> -> "(${op.toSqlString()} (${right.toString(db)}))"
     is DbQuery.IN<*, *> -> "${db.quoteTableName(prop.name)} IN (${literal.joinToString(", ") { db.quoteLiteral(it) }})"
@@ -117,7 +118,7 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
     }
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
-        //println("QUERY: $sql")
+        //println("QUERY: $sql, ${params.toList()}")
         return withContext(db.dispatcher) {
             val statement = connection.prepareStatement(sql)
             for (index in params.indices) {
@@ -179,7 +180,7 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
                 query(buildString {
                     append("CREATE ")
                     if (unique) append("UNIQUE ")
-                    append("INDEX IF NOT EXISTS ${column.quotedName} ON $_quotedTableName (${column.quotedName});")
+                    append("INDEX IF NOT EXISTS ${db.quoteColumnName("${table.tableName}_${column.name}")} ON $_quotedTableName (${column.quotedName} ${column.indexDirection.sname});")
                 })
             }
         }
@@ -191,19 +192,23 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
     }
 
     override suspend fun insert(data: Map<String, Any?>): DbResult {
-        val entries = table.toColumnMap(data).entries
+        try {
+            val entries = table.toColumnMap(data).entries
 
-        return query(buildString {
-            append("INSERT INTO ")
-            append(_quotedTableName)
-            append("(")
-            append(entries.joinToString(", ") { it.key.quotedName })
-            append(")")
-            append(" VALUES ")
-            append("(")
-            append(entries.joinToString(", ") { "?" })
-            append(")")
-        }, *entries.map { table.serializeColumn(it.value, it.key) }.toTypedArray())
+            return query(buildString {
+                append("INSERT INTO ")
+                append(_quotedTableName)
+                append("(")
+                append(entries.joinToString(", ") { it.key.quotedName })
+                append(")")
+                append(" VALUES ")
+                append("(")
+                append(entries.joinToString(", ") { "?" })
+                append(")")
+            }, *entries.map { table.serializeColumn(it.value, it.key) }.toTypedArray())
+        } catch (e: SQLIntegrityConstraintViolationException) {
+            throw DuplicateKeyDbException("Conflict", e)
+        }
     }
 
     override suspend fun find(skip: Long?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Iterable<T> {

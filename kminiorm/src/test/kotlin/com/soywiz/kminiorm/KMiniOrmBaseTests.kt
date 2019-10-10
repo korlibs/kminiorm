@@ -21,8 +21,8 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         val items = table.findAll().toList()
         assertEquals(1, items.size)
         val item1 = items.first()
-        println("item0: $item0")
-        println("item1: $item1")
+        //println("item0: $item0")
+        //println("item1: $item1")
         assertEquals(item0._id, item1._id)
         assertEquals(item0.uuid, item1.uuid)
         assertEquals(item0.date, item1.date)
@@ -59,6 +59,46 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals(1010, item2?.counter1)
         assertEquals(990, item2?.counter2)
     }
+
+    @Test
+    fun testUniqueConflictOnInsert() = suspendTest {
+        val table = db.table<UniqueModel>()
+        val a = UniqueModel("test")
+        val b = UniqueModel("test")
+        table.delete { everything }
+        table.insert(a)
+        assertFailsWith<DuplicateKeyDbException> {
+            table.insert(b)
+        }
+    }
+
+    @Test
+    fun testUpsert() = suspendTest {
+        val table = db.table<UpsertTestModel>()
+        val a = UpsertTestModel("test", "a", _id = DbKey("000000000000000000000001"))
+        val b = UpsertTestModel("test", "b", _id = DbKey("000000000000000000000002"))
+        table.delete { everything }
+        table.insert(a)
+        val c = table.upsert(b)
+        //println(table.find { everything }.joinToString("\n"))
+        assertEquals(1, table.find { everything }.count())
+        assertEquals("UpsertTestModel(name=test, value=a, _id=000000000000000000000001)", a.toString())
+        assertEquals("UpsertTestModel(name=test, value=b, _id=000000000000000000000002)", b.toString())
+        assertEquals("UpsertTestModel(name=test, value=b, _id=000000000000000000000001)", c.toString())
+    }
+
+    data class UpsertTestModel(
+            @DbUnique
+            val name: String,
+            val value: String,
+            override val _id: DbKey = DbKey()
+    ) : DbModel
+
+    data class UniqueModel(
+            @DbUnique
+            val name: String,
+            override val _id: DbKey = DbKey()
+    ) : DbModel
 
     data class MyCounterTable(
             override val _id: DbKey = DbKey(),

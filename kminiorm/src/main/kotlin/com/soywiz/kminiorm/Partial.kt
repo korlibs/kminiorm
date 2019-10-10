@@ -60,5 +60,7 @@ inline fun <reified T : Any> Partial(builder: PartialBuilder<T>.() -> Unit): Par
 inline fun <reified T : Any> Partial(vararg items: Pair<KProperty1<T, *>, Any>): Partial<T> =
     Partial(items.associate { it.first.name to it.second }, T::class)
 
-inline fun <reified T : Any> Partial(value: T): Partial<T> =
-    Partial(T::class.members.filterIsInstance<KProperty1<T, *>>().associate { it.name to it.get(value) }, T::class)
+fun <T : Any> Partial(value: T, clazz: KClass<out T> = value::class): Partial<T> =
+        Partial((clazz as KClass<T>).members.filterIsInstance<KProperty1<T, *>>().associate { it.name to it.get(value) }, (clazz as KClass<T>))
+
+inline fun <reified T : Any> Partial(value: T): Partial<T> = Partial(value, T::class)

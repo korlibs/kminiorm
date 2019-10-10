@@ -52,7 +52,7 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
         for (column in ormTableInfo.columns) {
             if (column.isIndex || column.isUnique) {
                 dbCollection.createIndex(
-                        Document(mapOf(column.name to +1)),
+                        Document(mapOf(column.name to column.indexDirection.sign)),
                         IndexOptions().unique(column.isUnique).background(true)
                 ) { result, t -> }
             }
@@ -65,9 +65,16 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
     }
 
     override suspend fun insert(data: Map<String, Any?>): DbResult {
-        val dataToInsert = data.mapToMongoJson()
-        awaitMongo<Void> { dbCollection.insertOne(dataToInsert, it) }
-        return DbResult(mapOf("insert" to 1))
+        try {
+            val dataToInsert = data.mapToMongoJson()
+            awaitMongo<Void> { dbCollection.insertOne(dataToInsert, it) }
+            return DbResult(mapOf("insert" to 1))
+        } catch (e: MongoWriteException) {
+            if (e.error.category == ErrorCategory.DUPLICATE_KEY) {
+                throw DuplicateKeyDbException("Conflict", e)
+            }
+            throw DbException("Database exception", e)
+        }
     }
 
     override suspend fun find(skip: Long?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Iterable<T> {
@@ -147,6 +154,10 @@ sealed class MongoQueryNode {
         override fun toJsonObject() = Document(mapOf())
     }
 
+    class Never : MongoQueryNode() {
+        override fun toJsonObject() = Document(mapOf("__UNIEXIStan__T" to "impossibl€"))
+    }
+
     class And(val left: MongoQueryNode, val right: MongoQueryNode) : MongoQueryNode() {
         override fun toJsonObject() = Document(left.toJsonObject() + right.toJsonObject())
     }
@@ -177,6 +188,7 @@ fun DbQueryUnOp.toMongoOp() = when (this) {
 fun <T> DbQuery<T>.toMongoMap(): MongoQueryNode = when (this) {
     is DbQuery.BinOp<*, *> -> MongoQueryNode.PropComparison(this.op.toMongoOp(), this.prop, this.literal)
     is DbQuery.Always<*> -> MongoQueryNode.Always()
+    is DbQuery.Never<*> -> MongoQueryNode.Never()
     is DbQuery.BinOpNode<*> -> when (this.op) {
         DbQueryBinOp.AND -> MongoQueryNode.And(left.toMongoMap(), right.toMongoMap())
         else -> TODO("Operator ${this.op}")
