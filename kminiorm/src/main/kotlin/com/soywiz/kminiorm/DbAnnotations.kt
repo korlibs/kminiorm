@@ -3,7 +3,7 @@ package com.soywiz.kminiorm
 @Target(AnnotationTarget.PROPERTY)
 annotation class DbMaxLength(val length: Int)
 
-@Target(AnnotationTarget.PROPERTY)
+@Target(AnnotationTarget.PROPERTY, AnnotationTarget.CLASS)
 annotation class DbName(val name: String)
 
 @Target(AnnotationTarget.PROPERTY)

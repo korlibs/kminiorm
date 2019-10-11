@@ -1,5 +1,6 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
 import java.sql.*
 import kotlin.reflect.*
@@ -10,6 +11,9 @@ interface Db {
     suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T>
     companion object
 }
+
+val __extrinsicUnquoted__ = "__extrinsic__"
+val __extrinsic__ = "\"$__extrinsicUnquoted__\""
 
 suspend inline fun <reified T : DbTableElement> Db.table() = table(T::class)
 fun <T : DbTableElement> Db.tableBlocking(clazz: KClass<T>) = runBlocking { table(clazz) }
@@ -25,9 +29,18 @@ fun ResultSet.toListMap(): List<Map<String, Any?>> {
         for (column in 1..metaData.columnCount) {
             row[metaData.getColumnName(column)] = this.getObject(column)
         }
-        out.add(row)
+        out.add(row.fixRow())
     }
     return out
+}
+
+private fun Map<String, Any?>.fixRow(): Map<String, Any?> {
+    if (this.containsKey(__extrinsicUnquoted__)) {
+        val data = this[__extrinsicUnquoted__].toString()
+        return (this + MiniJson.parse(data) as Map<String, Any?>) - setOf(__extrinsicUnquoted__)
+    } else {
+        return this
+    }
 }
 
 interface DbResult : List<Map<String, Any?>> {

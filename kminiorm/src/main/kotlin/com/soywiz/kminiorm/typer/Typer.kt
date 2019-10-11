@@ -1,5 +1,6 @@
 package com.soywiz.kminiorm.typer
 
+import com.soywiz.kminiorm.*
 import java.math.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
@@ -120,16 +121,30 @@ open class Typer private constructor(
                         val constructor = targetClass.primaryConstructor
                                 ?: targetClass.constructors.firstOrNull()
                         ?: error("Can't find constructor for $targetClass")
+
+                        val processedKeys = linkedSetOf<String?>()
+
                         val params = constructor.parameters.map {
                             val value = data[it.name]
                             val type = it.type
-                            value?.let { _type(value, type) }
+                            processedKeys += it.name
+                            value?.let { _type(value, type) } ?: DbTyper.createDefault(type)
                         }
                         val instance = kotlin.runCatching { constructor.call(*params.toTypedArray()) }.getOrNull()
                                 ?: error("Can't instantiate object $targetClass")
+
                         for (prop in targetClass.memberProperties.filterIsInstance<KMutableProperty1<*, *>>()) {
+                            processedKeys += prop.name
                             kotlin.runCatching { (prop as KMutableProperty1<Any?, Any?>).set(instance, data[prop.name]) }
                         }
+
+                        if (instance is ExtrinsicData) {
+                            for (key in data.keys) {
+                                if (key in processedKeys) continue
+                                instance[key.toString()] = data[key]
+                            }
+                        }
+
                         instance
                     }
                 }
@@ -143,6 +158,7 @@ open class Typer private constructor(
     inline fun <reified T> type(instance: Any): T = type(instance, typeOf<T>())
 
     fun createDefault(type: KType): Any? {
+        if (type.isMarkedNullable) return null
         val clazz = type.jvmErasure
         return when (clazz) {
             Unit::class -> Unit

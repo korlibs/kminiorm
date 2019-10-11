@@ -87,6 +87,50 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals("UpsertTestModel(name=test, value=b, _id=000000000000000000000001)", c.toString())
     }
 
+    @Test
+    fun testTableUpgrade() = suspendTest {
+        val tableV1 = db.table<TableV1>()
+        val tableV2 = db.table<TableV2>()
+        tableV1.delete { everything }
+        val row1 = tableV1.insert(TableV1("hello", "world"))
+        val row2 = tableV2.findOne { TableV2::name eq "hello" }
+        assertEquals("hello", row2?.name)
+        assertEquals("", row2?.fieldV2)
+        assertEquals(1, tableV2.findAll().count())
+    }
+
+    @Test
+    fun testTableExtrinsicData() = suspendTest {
+        val table = db.table<TableExtrinsic>()
+        table.delete { everything }
+        table.insert(mapOf("_id" to DbKey().toHexString(), "name" to "hello", "surname" to "world"))
+        val item = table.findOne()
+        assertEquals("hello", item?.name)
+        assertEquals("world", item?.get("surname"))
+    }
+
+    data class TableExtrinsic(
+        @DbUnique
+        val name: String,
+        override val _id: DbKey = DbKey()
+    ) : DbModel, ExtrinsicData by ExtrinsicData.Mixin()
+
+    @DbName("MyUpgradeableTable")
+    data class TableV1(
+        @DbUnique
+        val name: String,
+        val fieldV1: String,
+        override val _id: DbKey = DbKey()
+    ) : DbModel
+
+    @DbName("MyUpgradeableTable")
+    data class TableV2(
+        @DbUnique
+        val name: String,
+        val fieldV2: String,
+        override val _id: DbKey = DbKey()
+    ) : DbModel
+
     data class UpsertTestModel(
             @DbUnique
             val name: String,

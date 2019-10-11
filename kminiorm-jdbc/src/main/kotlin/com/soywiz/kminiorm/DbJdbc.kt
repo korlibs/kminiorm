@@ -14,6 +14,9 @@ import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
 
+//val DEBUG_JDBC = true
+val DEBUG_JDBC = false
+
 interface DbQuoteable {
     fun quoteColumnName(str: String): String
     fun quoteTableName(str: String): String
@@ -118,7 +121,7 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
     }
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
-        //println("QUERY: $sql, ${params.toList()}")
+        if (DEBUG_JDBC) println("QUERY: $sql, ${params.toList()}")
         return withContext(db.dispatcher) {
             val statement = connection.prepareStatement(sql)
             for (index in params.indices) {
@@ -129,11 +132,13 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
                     statement.setObject(index + 1, param)
                 }
             }
-            val resultSet = when {
+            val resultSet: ResultSet? = when {
                 sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
                 else -> null.also { statement.executeUpdate() }
             }
-            JdbcDbResult(resultSet, statement)
+            JdbcDbResult(resultSet, statement).also { result ->
+                if (DEBUG_JDBC) println(" --> $result")
+            }
         }
     }
 }
@@ -165,12 +170,16 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
                 } else {
                     append(" NOT NULL")
                     when {
-                        column.jclazz == String::class.java -> append(" DEFAULT (\"\")")
+                        column.jclazz == String::class -> append(" DEFAULT ('')")
                         column.jclazz.isSubclassOf(Number::class) -> append(" DEFAULT (0)")
                     }
                 }
                 append(";")
             })
+        }
+
+        if (table.hasExtrinsicData) {
+            query("ALTER TABLE $_quotedTableName ADD $__extrinsic__ VARCHAR NOT NULL DEFAULT '{}'")
         }
 
         for (column in table.columns) {
@@ -195,17 +204,26 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
         try {
             val entries = table.toColumnMap(data).entries
 
+            val keys = entries.map { it.key.quotedName }.toMutableList()
+            val values = entries.map { table.serializeColumn(it.value, it.key) }.toMutableList()
+            if (table.hasExtrinsicData) {
+                keys += __extrinsic__
+                values += MiniJson.stringify(data.filter { table.getColumnByName(it.key) == null })
+            }
+
+            assert(keys.size == values.size)
+
             return query(buildString {
                 append("INSERT INTO ")
                 append(_quotedTableName)
                 append("(")
-                append(entries.joinToString(", ") { it.key.quotedName })
+                append(keys.joinToString(", "))
                 append(")")
                 append(" VALUES ")
                 append("(")
-                append(entries.joinToString(", ") { "?" })
+                append(keys.joinToString(", ") { "?" })
                 append(")")
-            }, *entries.map { table.serializeColumn(it.value, it.key) }.toTypedArray())
+            }, *values.toTypedArray())
         } catch (e: SQLIntegrityConstraintViolationException) {
             throw DuplicateKeyDbException("Conflict", e)
         }
@@ -265,6 +283,7 @@ class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<
     val ormTableInfo = OrmTableInfo(clazz)
     val tableName = ormTableInfo.tableName
     val quotedTableName = db.quoteTableName(tableName)
+    val hasExtrinsicData = ExtrinsicData::class.isSuperclassOf(clazz)
     val columns = ormTableInfo.columns
     val columnsByName = ormTableInfo.columnsByName
     fun getColumnByName(name: String) = ormTableInfo.getColumnByName(name)
@@ -278,7 +297,10 @@ class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<
 
     fun toColumnMap(map: Map<String, Any?>): Map<ColumnDef<T>, Any?> {
         @Suppress("UNCHECKED_CAST")
-        return map.entries.map { getColumnByName(it.key) to it.value }.filter { it.first != null }.toMap() as Map<ColumnDef<T>, Any?>
+        return map.entries
+            .map { getColumnByName(it.key) to it.value }
+            .filter { it.first != null }
+            .toMap() as Map<ColumnDef<T>, Any?>
     }
 
     fun serializeColumn(value: Any?, column: ColumnDef<T>?, columnName: String = column?.name ?: "unknown"): Any? {

@@ -82,6 +82,7 @@ object MiniJson {
 
     private fun MiniStrReader.parse(): Any? {
         skipSpaces()
+        if (eof) return null
         return when (peek()) {
             'n' -> null.also { expect("null") }
             't' -> true.also { expect("true") }
