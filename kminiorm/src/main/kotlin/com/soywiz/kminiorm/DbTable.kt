@@ -76,3 +76,6 @@ interface DbTable<T : DbTableElement> {
 }
 
 suspend fun <T : DbTableElement> DbTable<T>.findById(id: DbKey): T? = findOne { DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ) }
+suspend fun <T : DbTableElement> DbTable<T>.findOrCreate(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }, build: () -> T): T {
+    return findOne(query) ?: build().also { insert(it) }
+}
