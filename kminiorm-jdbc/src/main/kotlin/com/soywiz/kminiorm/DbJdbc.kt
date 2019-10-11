@@ -182,16 +182,15 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
             query("ALTER TABLE $_quotedTableName ADD $__extrinsic__ VARCHAR NOT NULL DEFAULT '{}'")
         }
 
-        for (column in table.columns) {
+        for ((indexName, columns) in table.ormTableInfo.columnIndices) {
             //println("$column: ${column.quotedName}: ${column.isUnique}, ${column.isIndex}")
-            if (column.isUnique || column.isIndex) {
-                val unique = column.isUnique
-                query(buildString {
-                    append("CREATE ")
-                    if (unique) append("UNIQUE ")
-                    append("INDEX IF NOT EXISTS ${db.quoteColumnName("${table.tableName}_${column.name}")} ON $_quotedTableName (${column.quotedName} ${column.indexDirection.sname});")
-                })
-            }
+            val unique = columns.any { it.isUnique }
+            query(buildString {
+                append("CREATE ")
+                if (unique) append("UNIQUE ")
+                val packs = columns.map { "${it.quotedName} ${it.indexDirection.sname}" }
+                append("INDEX IF NOT EXISTS ${db.quoteColumnName("${table.tableName}_${indexName}")} ON $_quotedTableName (${packs.joinToString(", ")});")
+            })
         }
     }
 

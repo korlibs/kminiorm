@@ -109,6 +109,35 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals("world", item?.get("surname"))
     }
 
+    @Test
+    fun testMultiColumnIndex() = suspendTest {
+        val table = db.table<MultiColumnIndexTable>()
+        table.delete { everything }
+        table.insert(MultiColumnIndexTable(a = "a", b = "b1", c = "c1"))
+        table.insert(MultiColumnIndexTable(a = "a", b = "b2", c = "c2"))
+        assertFailsWith<DuplicateKeyDbException> {
+            table.insert(MultiColumnIndexTable(a = "a", b = "b1", c = "c3"))
+        }
+        assertFailsWith<DuplicateKeyDbException> {
+            table.insert(MultiColumnIndexTable(a = "a", b = "b2", c = "c4"))
+        }
+        table.upsert(MultiColumnIndexTable(a = "a", b = "b1", c = "c3"))
+        table.upsert(MultiColumnIndexTable(a = "a", b = "b2", c = "c4"))
+
+        assertEquals(2, table.findAll().count())
+        assertEquals("c3", table.findOne { (MultiColumnIndexTable::a eq "a") AND (MultiColumnIndexTable::b eq "b1") }?.c)
+        assertEquals("c4", table.findOne { (MultiColumnIndexTable::a eq "a") AND (MultiColumnIndexTable::b eq "b2") }?.c)
+    }
+
+    data class MultiColumnIndexTable(
+        @DbUnique(name = "a_b")
+        val a: String,
+        @DbUnique(name = "a_b")
+        val b: String,
+        val c: String,
+        override val _id: DbKey = DbKey()
+    ) : DbModel.BaseWithExtrinsic(_id)
+
     data class TableExtrinsic(
         @DbUnique
         val name: String,

@@ -55,9 +55,17 @@ class ColumnDef<T : Any>(val property: KProperty1<T, *>) {
     val jclazz get() = property.returnType.jvmErasure
     val name = property.findAnnotation<DbName>()?.name ?: property.name
     val isNullable get() = property.returnType.isMarkedNullable
-    val isUnique = property.findAnnotation<DbUnique>() != null
     val isPrimary = property.findAnnotation<DbPrimary>() != null
-    val isIndex = property.findAnnotation<DbIndex>() != null
+    val isUnique = property.findAnnotation<DbUnique>() != null
+    val isNormalIndex = property.findAnnotation<DbIndex>() != null
+
+    val isAnyIndex get() = isUnique || isNormalIndex
+
+    val unique = property.findAnnotation<DbUnique>()
+    val index = property.findAnnotation<DbIndex>()
+
+    val indexName = unique?.name?.takeIf { it.isNotEmpty() } ?: index?.name?.takeIf { it.isNotEmpty() } ?: name
+
     val indexDirection get() =
         property.findAnnotation<DbPrimary>()?.direction
                 ?: property.findAnnotation<DbUnique>()?.direction
@@ -68,6 +76,7 @@ class ColumnDef<T : Any>(val property: KProperty1<T, *>) {
 class OrmTableInfo<T : Any>(val clazz: KClass<T>) {
     val tableName = clazz.findAnnotation<DbName>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
     val columns = clazz.memberProperties.filter { it.findAnnotation<DbIgnore>() == null }.map { ColumnDef(it) }
+    val columnIndices = columns.filter { it.isAnyIndex }.groupBy { it.indexName }
     val columnsByName = columns.associateBy { it.name }
     fun getColumnByName(name: String) = columnsByName[name]
 }

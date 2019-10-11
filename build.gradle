@@ -97,6 +97,9 @@ subprojects {
 }
 
 task actualPublish(type: Task) {
+    subprojects {
+        dependsOn(":${project.name}:publish")
+    }
     doLast {
         def subject = project.property("project.bintray.org")
         def repo = project.property("project.bintray.repository")

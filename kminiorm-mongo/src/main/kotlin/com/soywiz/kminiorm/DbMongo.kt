@@ -49,13 +49,14 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
         }
 
         // Ensure indices
-        for (column in ormTableInfo.columns) {
-            if (column.isIndex || column.isUnique) {
-                dbCollection.createIndex(
-                        Document(mapOf(column.name to column.indexDirection.sign)),
-                        IndexOptions().unique(column.isUnique).background(true)
-                ) { result, t -> }
-            }
+        for ((indexName, columns) in ormTableInfo.columnIndices) {
+            val isUnique = columns.any { it.isUnique }
+            val map = columns.map { it.name to it.indexDirection.sign }.toMap()
+            //println("INDEX: indexName=$indexName, map=$map")
+            dbCollection.createIndex(
+                    Document(map),
+                    IndexOptions().name(indexName).unique(isUnique).background(true)
+            ) { result, t -> }
         }
     }
 
