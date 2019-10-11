@@ -1,12 +1,13 @@
 package com.soywiz.kminiorm
 
 interface ExtrinsicData {
-    operator fun get(key: String): Any?
-    operator fun set(key: String, value: Any?)
+    @DbIgnore
+    val __extrinsicData: MutableMap<String, Any?>
+    operator fun get(key: String): Any? = __extrinsicData[key]
+    operator fun set(key: String, value: Any?) = __extrinsicData.set(key, value)
+    operator fun contains(key: String) = key in __extrinsicData
 
-    open class Mixin(val data: MutableMap<String, Any?> = mutableMapOf()) : ExtrinsicData {
-        override fun get(key: String): Any? = data[key]
-        override fun set(key: String, value: Any?) = run { data[key] = value }
+    open class Mixin(@DbIgnore override val __extrinsicData: MutableMap<String, Any?> = mutableMapOf()) : ExtrinsicData {
     }
 }
 
