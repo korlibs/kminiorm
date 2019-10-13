@@ -375,7 +375,7 @@ class JdbcDbResult(
 
 private val JsonTyper = Typer()
         .withTyperUntyper<Date>(
-                typer = {
+                typer = { it, type ->
                     when (it) {
                         is String -> SimpleDateFormat.getDateTimeInstance().parse(it.toString())
                         is Date -> it
@@ -390,7 +390,7 @@ private val JsonTyper = Typer()
 private val JdbcDbTyper = Typer()
         .withDbKeyTyperUntyper()
         .withTyperUntyper<UUID>(
-                typer = {
+                typer = { it, type ->
                     when (it) {
                         is ByteArray -> UUID.nameUUIDFromBytes(it)
                         is String -> UUID.fromString(it)
@@ -403,7 +403,7 @@ private val JdbcDbTyper = Typer()
                 }
         )
         .withTyperUntyper<Date>(
-                typer = {
+                typer = { it, type ->
                     when (it) {
                         is String -> Date(Timestamp.valueOf(it).time)
                         is LocalDate -> Date.from(it.atStartOfDay(ZoneId.systemDefault()).toInstant())
@@ -416,7 +416,7 @@ private val JdbcDbTyper = Typer()
                 }
         )
         .withTyperUntyper<Timestamp>(
-                typer = {
+                typer = { it, type ->
                     when (it) {
                         is String -> Timestamp.valueOf(it)
                         is LocalDate -> Timestamp(Date.from(it.atStartOfDay(ZoneId.systemDefault()).toInstant()).time)
@@ -447,7 +447,7 @@ private val JdbcDbTyper = Typer()
         )
         */
         .withTyperUntyper<ByteArray>(
-                typer = {
+                typer = { it, type ->
                     when (it) {
                         is Blob -> it.binaryStream.readBytes()
                         is InputStream -> it.readBytes()

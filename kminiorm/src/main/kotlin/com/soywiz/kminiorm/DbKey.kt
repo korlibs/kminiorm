@@ -190,7 +190,7 @@ fun ObjectMapper.registerDbKeyModule(serializeAsString: Boolean = true) {
 */
 
 fun Typer.withDbKeyTyperUntyper(): Typer = this.withTyperUntyper<DbKey>(
-        typer = {
+        typer = { it, type ->
             when (it) {
                 is DbKey -> it
                 is String -> DbKey(it)

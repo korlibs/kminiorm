@@ -8,28 +8,28 @@ import kotlin.reflect.jvm.*
 
 open class Typer private constructor(
     private val keepTypes: Set<KClass<*>> = setOf(),
-    private val untypersByClass: Map<KClass<*>, (Any) -> Any> = mapOf(),
-    private val typersByClass: Map<KClass<*>, (Any) -> Any> = mapOf()
+    private val untypersByClass: Map<KClass<*>, Typer.(Any) -> Any> = mapOf(),
+    private val typersByClass: Map<KClass<*>, Typer.(Any, KType) -> Any> = mapOf()
 ) {
     constructor() : this(keepTypes = setOf())
 
     private fun copy(
         keepTypes: Set<KClass<*>> = this.keepTypes,
-        untypersByClass: Map<KClass<*>, (Any) -> Any> = this.untypersByClass,
-        typersByClass: Map<KClass<*>, (Any) -> Any> = this.typersByClass
+        untypersByClass: Map<KClass<*>, Typer.(Any) -> Any> = this.untypersByClass,
+        typersByClass: Map<KClass<*>, Typer.(Any, KType) -> Any> = this.typersByClass
     ) = Typer(keepTypes, untypersByClass, typersByClass)
 
     fun withKeepType(type: KClass<*>) = copy(keepTypes = keepTypes + type)
     inline fun <reified T> withKeepType() = withKeepType(T::class)
 
 
-    fun <T : Any> withUntyper(clazz: KClass<T>, handler: (T) -> Any?) = copy(untypersByClass = untypersByClass + mapOf(clazz to (handler as (Any) -> Any)))
-    fun <T : Any> withTyper(clazz: KClass<T>, handler: (Any) -> T) = copy(typersByClass = typersByClass + mapOf(clazz to (handler as (Any) -> Any)))
+    fun <T : Any> withUntyper(clazz: KClass<T>, handler: Typer.(T) -> Any?) = copy(untypersByClass = untypersByClass + mapOf(clazz to (handler as Typer.(Any) -> Any)))
+    fun <T : Any> withTyper(clazz: KClass<T>, handler: Typer.(Any, KType) -> T) = copy(typersByClass = typersByClass + mapOf(clazz to (handler as Typer.(Any, KType) -> Any)))
 
-    inline fun <reified T : Any> withUntyper(noinline handler: (T) -> Any) = withUntyper(T::class, handler)
-    inline fun <reified T : Any> withTyper(noinline handler: (Any) -> T) = withTyper(T::class, handler)
+    inline fun <reified T : Any> withUntyper(noinline handler: Typer.(T) -> Any) = withUntyper(T::class, handler)
+    inline fun <reified T : Any> withTyper(noinline handler: Typer.(Any, KType) -> T) = withTyper(T::class, handler)
 
-    inline fun <reified T : Any> withTyperUntyper(noinline typer: (Any) -> T, noinline untyper: (T) -> Any) = withTyper(T::class, typer).withUntyper(T::class, untyper)
+    inline fun <reified T : Any> withTyperUntyper(noinline typer: Typer.(Any, KType) -> T, noinline untyper: Typer.(T) -> Any) = withTyper(T::class, typer).withUntyper(T::class, untyper)
 
     fun untype(instance: Any): Any {
         val clazz = instance::class
@@ -62,7 +62,10 @@ open class Typer private constructor(
 
     private fun _toMap(instance: Any): Map<Any?, Any?> {
         if (instance is Map<*, *>) return instance as Map<Any?, Any?>
-        return instance::class.memberProperties.associate { it.name to (it as KProperty1<Any?, Any?>).get(instance) }
+        return instance::class.memberProperties
+            //.filter { it.isAccessible = true; true }
+            .filter { it.isAccessible }
+            .associate { it.name to (it as KProperty1<Any?, Any?>).get(instance) }
     }
 
     private fun _type(instance: Any, targetType: KType): Any? {
@@ -115,7 +118,7 @@ open class Typer private constructor(
                 else -> {
                     val typer = typersByClass[targetClass]
                     if (typer != null) {
-                        typer(instance)
+                        typer(instance, targetType)
                     } else {
                         val data = _toMap(instance)
                         val constructor = targetClass.primaryConstructor
@@ -174,7 +177,8 @@ open class Typer private constructor(
             List::class, ArrayList::class -> arrayListOf<Any?>()
             Map::class, HashMap::class, MutableMap::class -> mutableMapOf<Any?, Any?>()
             else -> {
-                val constructor = clazz.constructors.firstOrNull() ?: error("Class $clazz doesn't have constructors")
+                val constructor = clazz.constructors.firstOrNull()
+                    ?: error("Class $clazz doesn't have constructors")
                 constructor.call(*constructor.valueParameters.map { createDefault(it.type) }.toTypedArray())
             }
         }

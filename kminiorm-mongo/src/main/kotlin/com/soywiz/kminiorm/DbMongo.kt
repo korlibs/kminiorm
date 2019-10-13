@@ -204,7 +204,7 @@ private val mongoTyper = Typer()
         .withKeepType<Date>()
         .withKeepType<UUID>()
         .withTyperUntyper(
-            typer = { if (it is ObjectId) DbKey(it.toHexString()) else DbKey(it.toString()) },
+            typer = { it, type -> if (it is ObjectId) DbKey(it.toHexString()) else DbKey(it.toString()) },
             untyper = { ObjectId(it.toHexString()) }
         )
 

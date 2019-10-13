@@ -74,7 +74,8 @@ object MiniJson {
             is LongArray -> stringifyArray(instance.toList())
             is FloatArray -> stringifyArray(instance.toList())
             is DoubleArray -> stringifyArray(instance.toList())
-            else -> TODO("Don't know how to stringify ${instance::class} :: $instance")
+            //else -> TODO("Don't know how to stringify ${instance::class} :: $instance")
+            else -> stringifyString(instance.toString())
         }
     }
 
