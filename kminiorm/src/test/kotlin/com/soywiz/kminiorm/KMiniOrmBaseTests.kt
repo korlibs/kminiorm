@@ -129,6 +129,19 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals("c4", table.findOne { (MultiColumnIndexTable::a eq "a") AND (MultiColumnIndexTable::b eq "b2") }?.c)
     }
 
+    @Test
+    fun testStoreTypes() = suspendTest {
+        val table = db.table<StoreTypesTable>()
+        table.insert(StoreTypesTable(bool = true))
+        assertEquals(true, table.findOne { everything }?.bool)
+
+    }
+
+    data class StoreTypesTable(
+        val bool: Boolean,
+        override val _id: DbKey = DbKey()
+    ) : DbModel
+
     data class MultiColumnIndexTable(
         @DbUnique(name = "a_b")
         val a: String,

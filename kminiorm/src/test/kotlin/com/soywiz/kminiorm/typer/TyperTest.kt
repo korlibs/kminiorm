@@ -1,6 +1,8 @@
 package com.soywiz.kminiorm.typer
 
 import com.soywiz.kminiorm.*
+import com.sun.xml.internal.ws.api.server.InstanceResolver.*
+import kotlin.reflect.full.*
 import kotlin.test.*
 
 class TyperTest {
@@ -27,6 +29,11 @@ class TyperTest {
         val typer = Typer().withDbKeyTyperUntyper()
         val result = typer.untype(DbKey())
         println("result: $result")
+    }
+
+    @Test
+    fun testCreateDefault() {
+        assertEquals(false, Typer().createDefault(Boolean::class.starProjectedType))
     }
 
     data class Demo(val id: DbKey = DbKey())

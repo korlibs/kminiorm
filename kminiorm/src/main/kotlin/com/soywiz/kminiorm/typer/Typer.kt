@@ -162,6 +162,7 @@ open class Typer private constructor(
         val clazz = type.jvmErasure
         return when (clazz) {
             Unit::class -> Unit
+            Boolean::class -> false
             Float::class -> 0f
             Double::class -> 0.0
             Byte::class -> 0.toByte()
