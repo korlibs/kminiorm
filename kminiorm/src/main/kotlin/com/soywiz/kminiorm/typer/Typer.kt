@@ -183,9 +183,10 @@ open class Typer private constructor(
             String::class -> ""
             List::class, ArrayList::class -> arrayListOf<Any?>()
             Map::class, HashMap::class, MutableMap::class -> mutableMapOf<Any?, Any?>()
+            DbKey::class -> DbKey(ByteArray(12))
             else -> {
-                val constructor = clazz.constructors.firstOrNull()
-                    ?: error("Class $clazz doesn't have constructors")
+                val constructor = clazz.primaryConstructor ?: clazz.constructors.firstOrNull { it.isAccessible }
+                    ?: error("Class $clazz doesn't have public constructors")
                 constructor.call(*constructor.valueParameters.map { createDefault(it.type) }.toTypedArray())
             }
         }

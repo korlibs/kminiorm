@@ -34,7 +34,7 @@ class DbKey : Comparable<DbKey>, Serializable {
     constructor(date: Date, counter: Int) : this(dateToTimestampSeconds(date), counter, true)
     constructor(timestamp: Int, counter: Int) : this(timestamp, counter, true)
     private constructor(timestamp: Int, counter: Int, checkCounter: Boolean) : this(timestamp, generatedMachineIdentifier, RANDOM_VALUE2, counter, checkCounter) {}
-    constructor(hexString: String) : this(parseHexString(hexString))
+    constructor(hexString: String) : this(parseHexString(hexString.takeIf { it.isNotEmpty() } ?: "000000000000000000000000"))
     constructor(bytes: ByteArray) : this(ByteBuffer.wrap(bytes)) {
         assert(bytes.size == 12) { "bytes has length of 12" }
     }
