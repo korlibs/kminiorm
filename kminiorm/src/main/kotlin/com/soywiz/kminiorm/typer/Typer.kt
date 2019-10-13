@@ -47,11 +47,16 @@ open class Typer private constructor(
                 } else {
                     when (instance) {
                         is ByteArray -> instance
-                        else -> LinkedHashMap<String, Any?>().also { out -> for (prop in clazz.memberProperties) out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)?.let { untype(it) } }
+                        else -> LinkedHashMap<String, Any?>().also { out -> for (prop in clazz.memberProperties.filter { it.isAccessible = true; true }) out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)?.let { untype(it) } }
                     }
                 }
             }
         }
+    }
+
+    fun untypeNull(instance: Any?): Any? = when (instance) {
+        null -> null
+        else -> untype(instance)
     }
 
     fun <T> type(instance: Any, targetType: KType): T = _type(instance, targetType) as T

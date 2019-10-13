@@ -91,9 +91,9 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
     }
 
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+        val setData = (set?.data?.mapToMongo() ?: mapOf())
+        val incData = (increment?.data?.mapToMongo() ?: mapOf())
         val updateMap = Document(mutableMapOf<String, Any?>().also { map ->
-            val setData = (set?.data?.mapToMongo() ?: mapOf())
-            val incData = (increment?.data?.mapToMongo() ?: mapOf())
             if (setData.isNotEmpty()) map["\$set"] = setData
             if (incData.isNotEmpty()) map["\$inc"] = incData
         })
@@ -123,12 +123,10 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
 
 fun Map<String, Any?>.mapToMongoJson() = Document(mapToMongo())
 
-fun convertToMongoDb(value: Any?): Any? = when (value) {
-    is DbKey -> ObjectId(value.toHexString())
-    else -> value
-}
+fun convertToMongoDb(value: Any?): Any? = mongoTyper.untypeNull(value)
 
 fun Map<String, Any?>.mapToMongo(): Map<String, Any?> {
+    return convertToMongoDb(this) as Map<String, Any>
     return this.entries.associate { (key, value) -> key to convertToMongoDb(value) }
 }
 
@@ -200,14 +198,18 @@ fun <T> DbQuery<T>.toMongoMap(): MongoQueryNode = when (this) {
     else -> TODO()
 }
 
-private val mongoTyper = Typer()
-        .withKeepType<Date>()
-        .withKeepType<UUID>()
+
+private val mongoTyper = DbTyper
+        .withKeepType<ObjectId>()
         .withTyperUntyper(
-            typer = { it, type -> if (it is ObjectId) DbKey(it.toHexString()) else DbKey(it.toString()) },
+            typer = { it, type ->
+                when (it) {
+                    is ObjectId -> DbKey(it.toHexString())
+                    else -> DbKey(it.toString())
+                }
+            },
             untyper = { ObjectId(it.toHexString()) }
         )
-
 @PublishedApi
 internal suspend fun <T> awaitMongo(body: (SingleResultCallback<T>) -> Unit) = suspendCancellableCoroutine { c: CancellableContinuation<T> ->
     body(SingleResultCallback { result, t -> if (t != null) c.resumeWithException(t) else c.resume(result) })

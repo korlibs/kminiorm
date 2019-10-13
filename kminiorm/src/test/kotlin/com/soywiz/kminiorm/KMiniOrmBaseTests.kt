@@ -131,11 +131,20 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testStoreTypes() = suspendTest {
-        val table = db.table<StoreTypesTable>()
-        table.insert(StoreTypesTable(bool = true))
-        assertEquals(true, table.findOne { everything }?.bool)
-
+        val table = db.table<ArrayOfDbKey>()
+        table.delete { everything }
+        val item = table.insert(ArrayOfDbKey(listOf()))
+        item.copy(items = listOf(DbKey("000000000000000000000001"), DbKey("000000000000000000000002")))
+        table.update(Partial(mapOf(ArrayOfDbKey::items.name to listOf(DbKey("000000000000000000000001"), DbKey("000000000000000000000002"))), ArrayOfDbKey::class)) { id(item._id) }
+        table.update(Partial(mapOf("list" to listOf(DbKey("000000000000000000000001"), DbKey("000000000000000000000002"))), ArrayOfDbKey::class)) { id(item._id) }
+        table.update(Partial(item).withOnly(ArrayOfDbKey::items)) { id(item._id) }
+        //table.update(Partial(mapOf("list" to listOf("000000000000000000000001", "000000000000000000000002")), ArrayOfDbKey::class)) { id(item._id) }
     }
+
+    data class ArrayOfDbKey(
+        val items: List<DbKey>,
+        override val _id: DbKey = DbKey()
+    ) : DbModel
 
     data class StoreTypesTable(
         val bool: Boolean,

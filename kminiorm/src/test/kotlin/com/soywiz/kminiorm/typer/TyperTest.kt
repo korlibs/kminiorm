@@ -1,7 +1,6 @@
 package com.soywiz.kminiorm.typer
 
 import com.soywiz.kminiorm.*
-import com.sun.xml.internal.ws.api.server.InstanceResolver.*
 import kotlin.reflect.full.*
 import kotlin.test.*
 
@@ -43,6 +42,16 @@ class TyperTest {
         assertEquals(mapOf("value" to true), untype)
         assertEquals("{\"value\":true}", json)
     }
+
+    @Test
+    fun testDbKeyListTable() {
+        val k1 = DbKey("5da318a9a396515aaa9d3600")
+        val k2 = DbKey("5da318a9a396515aaa9d3601")
+        val result = PartialUntyped<DbKeyListTable>(DbTyper, mapOf("list" to listOf(k1.toHexString(), k2.toHexString())), DbKeyListTable::class)
+        assertEquals(listOf(k1, k2), result.complete.list)
+    }
+
+    data class DbKeyListTable(val list: List<DbKey>)
 
     data class BooleanTable(val value: Boolean)
 

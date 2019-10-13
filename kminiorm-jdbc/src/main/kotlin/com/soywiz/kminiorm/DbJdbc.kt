@@ -245,8 +245,12 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
     }
 
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+        val table = this.table
         val setEntries = (set?.let { table.toColumnMap(it.data).entries } ?: setOf()).toList()
         val incrEntries = (increment?.let { table.toColumnMap(it.data).entries } ?: setOf()).toList()
+
+        // Can't make an UPDATE query that does nothing
+        if (setEntries.isEmpty() && incrEntries.isEmpty()) return 0L
 
         return query(buildString {
             append("UPDATE ")

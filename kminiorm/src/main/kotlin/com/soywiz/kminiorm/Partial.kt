@@ -16,7 +16,9 @@ data class Partial<T : Any>(val data: Map<String, Any?>, val clazz: KClass<T>) {
         return Partial(data.filterKeys { it in valid }, clazz)
     }
 
-    val partial by lazy { PartialCombiner(clazz).create(this) }
+    val complete by lazy { PartialCombiner(clazz).create(this) }
+    @Deprecated("", ReplaceWith("complete"))
+    val partial get() = complete
 
     companion object {
         inline fun <reified T : Any> combine(item: T, partial: Partial<T>) =
@@ -78,14 +80,13 @@ fun Typer.withPartialTyper() = withTyperUntyper<Partial<*>>(
                 is Iterable<*> -> (it as Iterable<Map.Entry<String, Any?>>).toList().associate { it.key to it.value }
                 else -> mapOf()
             }
-            PartialUntyped<Any>(this, map as Map<Any?, Any?>, type)
+            PartialUntyped<Any>(this, map as Map<Any?, Any?>, (type.arguments.first().type?.jvmErasure ?: Any::class) as KClass<Any>)
         }
     },
     untyper = { it.data }
 )
 
-fun <T : Any> PartialUntyped(typer: Typer, map: Map<Any?, Any?>, type: KType): Partial<T> {
-    val clazz = type.arguments.first().type?.jvmErasure ?: Any::class
+fun <T : Any> PartialUntyped(typer: Typer, map: Map<Any?, Any?>, clazz: KClass<T>): Partial<T> {
     val propertiesByName = clazz.memberProperties.associateBy { it.name }
     val result = map.entries.associate {
         val property = propertiesByName[it.key.toString()]
