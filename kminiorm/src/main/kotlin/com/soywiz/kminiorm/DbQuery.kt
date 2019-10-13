@@ -41,6 +41,7 @@ open class DbQueryBuilder<T> {
     infix fun <R> KProperty1<@Exact T, @Exact R>.IN(literal: List<R>) = DbQuery.IN(this, literal)
     infix fun <R> KProperty1<@Exact T, @Exact R>.LIKE(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.LIKE)
     infix fun <R> KProperty1<@Exact T, @Exact R>.eq(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.EQ)
+    infix fun <T> KProperty1<@Exact T, DbKey>.eq(literal: DbModel) = DbQuery.BinOp(this, literal._id, DbQueryBinOp.EQ)
     infix fun <R> KProperty1<@Exact T, @Exact R>.ne(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.NE)
     infix fun <R : Comparable<R>> KProperty1<@Exact T, @Exact R>.gt(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.GT)
     infix fun <R : Comparable<R>> KProperty1<@Exact T, @Exact R>.lt(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.LT)
