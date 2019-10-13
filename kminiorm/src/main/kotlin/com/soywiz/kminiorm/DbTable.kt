@@ -23,8 +23,8 @@ interface DbTable<T : DbTableElement> {
     suspend fun insert(instance: Partial<T>): DbResult = insert(instance.data)
     suspend fun insert(data: Map<String, Any?>): DbResult
     // R
-    suspend fun find(skip: Long? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Iterable<T>
-    suspend fun findAll(skip: Long? = null, limit: Long? = null): Iterable<T> = find(skip = skip, limit = limit)
+    suspend fun find(skip: Long? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): List<T>
+    suspend fun findAll(skip: Long? = null, limit: Long? = null): List<T> = find(skip = skip, limit = limit)
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query = query, limit = 1).firstOrNull()
     // U
     suspend fun update(set: Partial<T>? = null, increment: Partial<T>? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long

@@ -78,7 +78,7 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
         }
     }
 
-    override suspend fun find(skip: Long?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Iterable<T> {
+    override suspend fun find(skip: Long?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): List<T> {
         val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject()
         //println("QUERY: $rquery")
         val result = dbCollection.find(rquery)
