@@ -65,6 +65,8 @@ class ColumnDef<T : Any>(val property: KProperty1<T, *>) {
     val unique = property.findAnnotation<DbUnique>()
     val index = property.findAnnotation<DbIndex>()
 
+    val indexOrder = unique?.order ?: index?.order ?: 0
+
     val indexName = unique?.name?.takeIf { it.isNotEmpty() } ?: index?.name?.takeIf { it.isNotEmpty() } ?: name
 
     val indexDirection get() =
@@ -77,7 +79,7 @@ class ColumnDef<T : Any>(val property: KProperty1<T, *>) {
 class OrmTableInfo<T : Any>(val clazz: KClass<T>) {
     val tableName = clazz.findAnnotation<DbName>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
     val columns = clazz.memberProperties.filter { it.findAnnotation<DbIgnore>() == null && !it.name.startsWith("__") }.map { ColumnDef(it) }
-    val columnIndices = columns.filter { it.isAnyIndex }.groupBy { it.indexName }
+    val columnIndices = columns.filter { it.isAnyIndex }.sortedBy { it.indexOrder }.groupBy { it.indexName }
     val columnsByName = columns.associateBy { it.name }
     fun getColumnByName(name: String) = columnsByName[name]
 }
