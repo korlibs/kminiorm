@@ -36,6 +36,7 @@ open class Typer private constructor(
         if (clazz in keepTypes) return instance
         return when (instance) {
             is Number -> instance
+            is Boolean -> instance
             is String -> instance
             is Map<*, *> -> instance.entries.associate { (key, value) -> key?.let { untype(it) } to value?.let { untype(it) } }
             is Iterable<*> -> instance.map { it?.let { untype(it) } }

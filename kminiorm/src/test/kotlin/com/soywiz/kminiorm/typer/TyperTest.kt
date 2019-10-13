@@ -36,6 +36,16 @@ class TyperTest {
         assertEquals(false, Typer().createDefault(Boolean::class.starProjectedType))
     }
 
+    @Test
+    fun testBoolean() {
+        val untype = Typer().untype(BooleanTable(value = true))
+        val json = MiniJson.stringify(untype)
+        assertEquals(mapOf("value" to true), untype)
+        assertEquals("{\"value\":true}", json)
+    }
+
+    data class BooleanTable(val value: Boolean)
+
     data class Demo(val id: DbKey = DbKey())
 
     data class Demo2(val items: List<Item>, val extra: Item) {
