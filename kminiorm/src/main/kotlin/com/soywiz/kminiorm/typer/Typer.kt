@@ -68,6 +68,7 @@ open class Typer private constructor(
 
     private fun _toMap(instance: Any): Map<Any?, Any?> {
         if (instance is Map<*, *>) return instance as Map<Any?, Any?>
+        if (instance is Iterable<*>) return (instance as Iterable<Map.Entry<Any?, Any?>>).toList().associate { it.key to it.value }
         return instance::class.memberProperties
             //.filter { it.isAccessible = true; true }
             .filter { it.isAccessible }

@@ -1,6 +1,7 @@
 package com.soywiz.kminiorm.typer
 
 import com.soywiz.kminiorm.*
+import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.test.*
 
@@ -49,6 +50,36 @@ class TyperTest {
         val k2 = DbKey("5da318a9a396515aaa9d3601")
         val result = PartialUntyped<DbKeyListTable>(DbTyper, mapOf("list" to listOf(k1.toHexString(), k2.toHexString())), DbKeyListTable::class)
         assertEquals(listOf(k1, k2), result.complete.list)
+    }
+
+    class VertxJsonObject(val map: Map<String, Any?>) : Iterable<Map.Entry<String, Any?>> {
+        constructor(vararg pairs: Pair<String, Any?>) : this(pairs.toMap())
+        override fun iterator(): Iterator<Map.Entry<String, Any?>> = map.iterator()
+    }
+
+    @UseExperimental(ExperimentalStdlibApi::class)
+    @Test
+    fun testMixed() {
+        val json = MiniJson.parse("{\"list\": [{\"a\": 1, \"b\": 2}]}")!!
+        val json2 = mapOf("list" to listOf(mapOf("a" to 1, "b" to 2)))
+        val json3 = mapOf("list" to listOf(VertxJsonObject("a" to 1, "b" to 2)))
+        val partial1 = DbTyper.type<Partial<Mixed>>(json)
+        val partial2 = DbTyper.type<Partial<Mixed>>(json2)
+        val partial3 = DbTyper.type<Partial<Mixed>>(json3)
+
+        println(json)
+        println(json2)
+        println(partial1)
+        println(partial2)
+        println(partial3)
+
+        assertEquals(Mixed(listOf(Mixed.Compound(1, 2))), partial1.complete)
+        assertEquals(Mixed(listOf(Mixed.Compound(1, 2))), partial2.complete)
+        assertEquals(Mixed(listOf(Mixed.Compound(1, 2))), partial3.complete)
+    }
+
+    data class Mixed(val list: List<Compound>) {
+        data class Compound(val a: Int, val b: Int)
     }
 
     data class DbKeyListTable(val list: List<DbKey>)

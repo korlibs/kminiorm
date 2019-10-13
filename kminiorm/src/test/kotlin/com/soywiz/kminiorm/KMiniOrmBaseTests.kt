@@ -141,6 +141,24 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         //table.update(Partial(mapOf("list" to listOf("000000000000000000000001", "000000000000000000000002")), ArrayOfDbKey::class)) { id(item._id) }
     }
 
+    @Test
+    fun testArrayOfCustom() = suspendTest {
+        val table = db.table<ArrayOfCustom>()
+        table.delete { everything }
+        val item = table.insert(ArrayOfCustom(listOf()))
+        table.update(Partial(mapOf(
+            "items" to listOf(mapOf("a" to 1, "b" to 2, "c" to 3))
+        ), ArrayOfCustom::class)) { id(item._id) }
+        assertEquals("[Custom(a=1, b=2, c=3)]", table.findOne { everything }?.items?.toString())
+    }
+
+    data class Custom(val a: Int, val b: Int, val c: Int)
+
+    data class ArrayOfCustom(
+        val items: List<Custom>,
+        override val _id: DbKey = DbKey()
+    ) : DbModel
+
     data class ArrayOfDbKey(
         val items: List<DbKey>,
         override val _id: DbKey = DbKey()

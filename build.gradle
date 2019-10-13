@@ -45,6 +45,7 @@ subprojects {
         testCompile("com.h2database:h2:1.4.199")
         testCompile("org.jetbrains.kotlin:kotlin-test-junit")
         testCompile("junit:junit:4.12")
+        //testCompile("com.fasterxml.jackson.core:jackson-core:2.9.9")
     }
 
     task sourcesJar(type: Jar) {
