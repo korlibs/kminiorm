@@ -96,7 +96,7 @@ subprojects {
     }
 }
 
-task actualPublish(type: Task) {
+task publish(type: Task) {
     subprojects {
         dependsOn(":${project.name}:publish")
     }
