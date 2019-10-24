@@ -17,15 +17,15 @@ import kotlin.reflect.*
 //fun Vertx.createMongo(connectionString: String): DbMongo =
 //        DbMongo(MongoClient.createShared(this, JsonObject(mapOf("connection_string" to connectionString))))
 
-class DbMongo private constructor(val mongoClient: MongoClient, val client: MongoDatabase) : Db {
+class DbMongo private constructor(val mongoClient: MongoClient, val client: MongoDatabase, val typer: Typer) : Db {
     companion object {
         /**
          * Example: DbMongo("mongodb://127.0.0.1:27017/kminiormtest")
          */
-        operator fun invoke(connectionString: String): DbMongo {
+        operator fun invoke(connectionString: String, typer: Typer = mongoTyper): DbMongo {
             val connection = ConnectionString(connectionString)
             val client = MongoClients.create(connection)
-            return DbMongo(client, client.getDatabase(connection.database ?: error("No database specified")))
+            return DbMongo(client, client.getDatabase(connection.database ?: error("No database specified")), typer)
         }
     }
 
@@ -54,20 +54,20 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
             val map = columns.map { it.name to it.indexDirection.sign }.toMap()
             //println("INDEX: indexName=$indexName, map=$map")
             dbCollection.createIndex(
-                    Document(map),
-                    IndexOptions().name(indexName).unique(isUnique).background(true)
+                Document(map),
+                IndexOptions().name(indexName).unique(isUnique).background(true)
             ) { result, t -> }
         }
     }
 
     override suspend fun insert(instance: T): T {
-        insert(mongoTyper.untype(instance) as Map<String, Any?>)
+        insert(db.typer.untype(instance) as Map<String, Any?>)
         return instance
     }
 
     override suspend fun insert(data: Map<String, Any?>): DbResult {
         try {
-            val dataToInsert = data.mapToMongoJson()
+            val dataToInsert = data.mapToMongoJson(db.typer)
             awaitMongo<Void> { dbCollection.insertOne(dataToInsert, it) }
             return DbResult(mapOf("insert" to 1))
         } catch (e: MongoWriteException) {
@@ -79,27 +79,27 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
     }
 
     override suspend fun find(skip: Long?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): List<T> {
-        val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject()
+        val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject(db)
         //println("QUERY: $rquery")
         val result = dbCollection.find(rquery)
-                .let { if (skip != null) it.limit(skip.toInt()) else it }
-                .let { if (limit != null) it.limit(limit.toInt()) else it }
+            .let { if (skip != null) it.limit(skip.toInt()) else it }
+            .let { if (limit != null) it.limit(limit.toInt()) else it }
         val items = arrayListOf<Document>()
         awaitMongo<Void> { result.forEach(Block { items.add(it) }, it) }
 
-        return items.map { mongoTyper.type<T>(it, clazz) }
+        return items.map { db.typer.type<T>(it, clazz) }
     }
 
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        val setData = (set?.data?.mapToMongo() ?: mapOf())
-        val incData = (increment?.data?.mapToMongo() ?: mapOf())
+        val setData = (set?.data?.mapToMongo(db.typer) ?: mapOf())
+        val incData = (increment?.data?.mapToMongo(db.typer) ?: mapOf())
         val updateMap = Document(mutableMapOf<String, Any?>().also { map ->
             if (setData.isNotEmpty()) map["\$set"] = setData
             if (incData.isNotEmpty()) map["\$inc"] = incData
         })
 
         val result = awaitMongo<UpdateResult> {
-            val bson = DbQueryBuilder.build(query).toMongoMap().toJsonObject()
+            val bson = DbQueryBuilder.build(query).toMongoMap().toJsonObject(db)
             when (limit) {
                 null -> dbCollection.updateMany(bson, updateMap, it)
                 1L -> dbCollection.updateOne(bson, updateMap, it)
@@ -110,7 +110,7 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
     }
 
     override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject()
+        val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject(db)
         val result = awaitMongo<DeleteResult> { dbCollection.deleteMany(rquery, it) }
         return result.deletedCount
     }
@@ -121,21 +121,21 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
     }
 }
 
-fun Map<String, Any?>.mapToMongoJson() = Document(mapToMongo())
+fun Map<String, Any?>.mapToMongoJson(mongoTyper: Typer) = Document(mapToMongo(mongoTyper))
 
-fun convertToMongoDb(value: Any?): Any? = mongoTyper.untypeNull(value)
+fun convertToMongoDb(value: Any?, mongoTyper: Typer): Any? = mongoTyper.untypeNull(value)
 
-fun Map<String, Any?>.mapToMongo(): Map<String, Any?> {
-    return convertToMongoDb(this) as Map<String, Any>
-    return this.entries.associate { (key, value) -> key to convertToMongoDb(value) }
+fun Map<String, Any?>.mapToMongo(mongoTyper: Typer): Map<String, Any?> {
+    return convertToMongoDb(this, mongoTyper) as Map<String, Any>
+    return this.entries.associate { (key, value) -> key to convertToMongoDb(value, mongoTyper) }
 }
 
 sealed class MongoQueryNode {
-    abstract fun toJsonObject(): Document
+    abstract fun toJsonObject(db: DbMongo): Document
 
     class PropComparison<T>(val op: String, val left: KProperty<T>, val value: T) : MongoQueryNode() {
-        override fun toJsonObject(): Document {
-            val value = convertToMongoDb(value)
+        override fun toJsonObject(db: DbMongo): Document {
+            val value = convertToMongoDb(value, db.typer)
 
             val v: Any? = when (value) {
                 //is DbKey -> Document(mapOf(OID to value.toHexString()))
@@ -144,25 +144,25 @@ sealed class MongoQueryNode {
                 else -> value
             }
             return Document(
-                    mapOf(left.name to if (op == "\$eq") v else mapOf(op to v))
+                mapOf(left.name to if (op == "\$eq") v else mapOf(op to v))
             )
         }
     }
 
     class Always : MongoQueryNode() {
-        override fun toJsonObject() = Document(mapOf())
+        override fun toJsonObject(db: DbMongo) = Document(mapOf())
     }
 
     class Never : MongoQueryNode() {
-        override fun toJsonObject() = Document(mapOf("__UNIEXIStan__T" to "impossibl€"))
+        override fun toJsonObject(db: DbMongo) = Document(mapOf("__UNIEXIStan__T" to "impossibl€"))
     }
 
     class And(val left: MongoQueryNode, val right: MongoQueryNode) : MongoQueryNode() {
-        override fun toJsonObject() = Document(left.toJsonObject() + right.toJsonObject())
+        override fun toJsonObject(db: DbMongo) = Document(left.toJsonObject(db) + right.toJsonObject(db))
     }
 
     class Raw(val json: Document) : MongoQueryNode() {
-        override fun toJsonObject() = json
+        override fun toJsonObject(db: DbMongo) = json
     }
 }
 
@@ -198,18 +198,43 @@ fun <T> DbQuery<T>.toMongoMap(): MongoQueryNode = when (this) {
     else -> TODO()
 }
 
-
 private val mongoTyper = DbTyper
-        .withKeepType<ObjectId>()
-        .withTyperUntyper(
-            typer = { it, type ->
-                when (it) {
-                    is ObjectId -> DbKey(it.toHexString())
-                    else -> DbKey(it.toString())
-                }
-            },
-            untyper = { ObjectId(it.toHexString()) }
-        )
+    .withKeepType<ObjectId>()
+    .withTyperUntyper(
+        typer = { it, type ->
+            when (it) {
+                is ObjectId -> DbKey(it.toHexString())
+                else -> DbKey(it.toString())
+            }
+        },
+        untyper = { ObjectId(it.toHexString()) }
+    )
+    .withTyperUntyper<ByteArray>(
+        typer = { it, type ->
+            when (it) {
+                is ByteArray -> it
+                is Binary -> it.data
+                is String -> it.fromBase64()
+                else -> error("Unknown how to decode $it to $type")
+            }
+        },
+        untyper = { it.toBase64() }
+    )
+    .withTyperUntyper<Binary>(
+        typer = { it, type ->
+            when (it) {
+                is ByteArray -> Binary(it)
+                is Binary -> it
+                is String -> Binary(it.fromBase64())
+                else -> error("Unknown how to decode $it to $type")
+            }
+        },
+        untyper = { it.data.toBase64() }
+    )
+
+private fun ByteArray.toBase64(): String = Base64.getEncoder().encodeToString(this)
+private fun String.fromBase64(): ByteArray = Base64.getDecoder().decode(this)
+
 @PublishedApi
 internal suspend fun <T> awaitMongo(body: (SingleResultCallback<T>) -> Unit) = suspendCancellableCoroutine { c: CancellableContinuation<T> ->
     body(SingleResultCallback { result, t -> if (t != null) c.resumeWithException(t) else c.resume(result) })
