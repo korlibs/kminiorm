@@ -1,6 +1,7 @@
 package com.soywiz.kminiorm.typer
 
 import com.soywiz.kminiorm.*
+import com.soywiz.kminiorm.internal.*
 import java.math.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
@@ -34,20 +35,23 @@ open class Typer private constructor(
     fun untype(instance: Any): Any {
         val clazz = instance::class
         if (clazz in keepTypes) return instance
+        val untyper = untypersByClass[clazz]
+        if (untyper != null) return untyper(instance)
+
         return when (instance) {
             is Number -> instance
             is Boolean -> instance
             is String -> instance
+            is ByteArray -> instance.toBase64()
             is Map<*, *> -> instance.entries.associate { (key, value) -> key?.let { untype(it) } to value?.let { untype(it) } }
             is Iterable<*> -> instance.map { it?.let { untype(it) } }
             else -> {
-                val untyper = untypersByClass[clazz]
-                if (untyper != null) {
-                    untyper(instance)
-                } else {
-                    when (instance) {
-                        is ByteArray -> instance
-                        else -> LinkedHashMap<String, Any?>().also { out -> for (prop in clazz.memberProperties.filter { it.isAccessible = true; true }) out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)?.let { untype(it) } }
+                when (instance) {
+                    is ByteArray -> instance
+                    else -> LinkedHashMap<String, Any?>().also { out ->
+                        for (prop in clazz.memberProperties.filter {
+                            it.isAccessible = true; true
+                        }) out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)?.let { untype(it) }
                     }
                 }
             }
@@ -78,6 +82,9 @@ open class Typer private constructor(
     private fun _type(instance: Any, targetType: KType): Any? {
         val targetClass = targetType.jvmErasure
 
+        val typer = typersByClass[targetClass]
+        if (typer != null) return typer(instance, targetType)
+
         return when (targetClass) {
             instance::class -> instance
             Boolean::class -> when (instance) {
@@ -87,7 +94,13 @@ open class Typer private constructor(
                 else -> true
             }
             String::class -> instance.toString()
-            ByteArray::class -> (instance as? ByteArray) ?: _toIterable(instance).map { (it as Number).toByte() }.toTypedArray()
+            ByteArray::class -> {
+                when (instance) {
+                    is ByteArray -> instance
+                    is String -> instance.fromBase64()
+                    else -> _toIterable(instance).map { (it as Number).toByte() }.toTypedArray()
+                }
+            }
             IntArray::class -> (instance as? IntArray) ?: _toIterable(instance).map { (it as Number).toInt() }.toTypedArray()
             LongArray::class -> (instance as? LongArray) ?: _toIterable(instance).map { (it as Number).toLong() }.toTypedArray()
             FloatArray::class -> (instance as? FloatArray) ?: _toIterable(instance).map { (it as Number).toFloat() }.toTypedArray()
@@ -123,40 +136,35 @@ open class Typer private constructor(
                     }
                 }
                 else -> {
-                    val typer = typersByClass[targetClass]
-                    if (typer != null) {
-                        typer(instance, targetType)
-                    } else {
-                        val data = _toMap(instance)
-                        val constructor = targetClass.primaryConstructor
-                                ?: targetClass.constructors.firstOrNull()
-                        ?: error("Can't find constructor for $targetClass")
+                    val data = _toMap(instance)
+                    val constructor = targetClass.primaryConstructor
+                            ?: targetClass.constructors.firstOrNull()
+                    ?: error("Can't find constructor for $targetClass")
 
-                        val processedKeys = linkedSetOf<String?>()
+                    val processedKeys = linkedSetOf<String?>()
 
-                        val params = constructor.parameters.map {
-                            val value = data[it.name]
-                            val type = it.type
-                            processedKeys += it.name
-                            value?.let { _type(value, type) } ?: DbTyper.createDefault(type)
-                        }
-                        val instance = kotlin.runCatching { constructor.call(*params.toTypedArray()) }.getOrNull()
-                                ?: error("Can't instantiate object $targetClass")
-
-                        for (prop in targetClass.memberProperties.filterIsInstance<KMutableProperty1<*, *>>()) {
-                            processedKeys += prop.name
-                            kotlin.runCatching { (prop as KMutableProperty1<Any?, Any?>).set(instance, data[prop.name]) }
-                        }
-
-                        if (instance is ExtrinsicData) {
-                            for (key in data.keys) {
-                                if (key in processedKeys) continue
-                                instance[key.toString()] = data[key]
-                            }
-                        }
-
-                        instance
+                    val params = constructor.parameters.map {
+                        val value = data[it.name]
+                        val type = it.type
+                        processedKeys += it.name
+                        value?.let { _type(value, type) } ?: DbTyper.createDefault(type)
                     }
+                    val instance = kotlin.runCatching { constructor.call(*params.toTypedArray()) }.getOrNull()
+                            ?: error("Can't instantiate object $targetClass")
+
+                    for (prop in targetClass.memberProperties.filterIsInstance<KMutableProperty1<*, *>>()) {
+                        processedKeys += prop.name
+                        kotlin.runCatching { (prop as KMutableProperty1<Any?, Any?>).set(instance, data[prop.name]) }
+                    }
+
+                    if (instance is ExtrinsicData) {
+                        for (key in data.keys) {
+                            if (key in processedKeys) continue
+                            instance[key.toString()] = data[key]
+                        }
+                    }
+
+                    instance
                 }
             }
         }

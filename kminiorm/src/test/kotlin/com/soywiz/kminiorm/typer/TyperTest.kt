@@ -52,6 +52,13 @@ class TyperTest {
         assertEquals(listOf(k1, k2), result.complete.list)
     }
 
+    @Test
+    fun testByteArray() {
+        assertEquals("AQIDBA==", Typer().untype(byteArrayOf(1, 2, 3, 4)))
+        assertEquals(byteArrayOf(1, 2, 3, 4).toList(), Typer().type<ByteArray>("AQIDBA==").toList())
+
+    }
+
     class VertxJsonObject(val map: Map<String, Any?>) : Iterable<Map.Entry<String, Any?>> {
         constructor(vararg pairs: Pair<String, Any?>) : this(pairs.toMap())
         override fun iterator(): Iterator<Map.Entry<String, Any?>> = map.iterator()
