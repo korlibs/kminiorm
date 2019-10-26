@@ -46,8 +46,9 @@ open class Typer private constructor(
             is Map<*, *> -> instance.entries.associate { (key, value) -> key?.let { untype(it) } to value?.let { untype(it) } }
             is Iterable<*> -> instance.map { it?.let { untype(it) } }
             else -> {
-                when (instance) {
-                    is ByteArray -> instance
+
+                when {
+                    clazz.java.isEnum -> (instance as Enum<*>).name
                     else -> LinkedHashMap<String, Any?>().also { out ->
                         for (prop in clazz.memberProperties.filter {
                             it.isAccessible = true; true
@@ -81,6 +82,7 @@ open class Typer private constructor(
 
     private fun _type(instance: Any, targetType: KType): Any? {
         val targetClass = targetType.jvmErasure
+        val targetClassJava = targetClass.java
 
         val typer = typersByClass[targetClass]
         if (typer != null) return typer(instance, targetType)
@@ -134,6 +136,10 @@ open class Typer private constructor(
                         targetClass.isSubclassOf(Set::class) -> info.toMutableSet()
                         else -> error("Don't know how to convert iterable into $targetClass")
                     }
+                }
+                targetClassJava.isEnum -> {
+                    val constants = targetClassJava.enumConstants
+                    constants.firstOrNull { (it as Enum<*>).name == instance } ?: (if (targetType.isMarkedNullable) null else (constants.firstOrNull() ?: error("No constants")))
                 }
                 else -> {
                     val data = _toMap(instance)

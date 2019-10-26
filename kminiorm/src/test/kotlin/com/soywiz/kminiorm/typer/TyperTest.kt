@@ -56,7 +56,17 @@ class TyperTest {
     fun testByteArray() {
         assertEquals("AQIDBA==", Typer().untype(byteArrayOf(1, 2, 3, 4)))
         assertEquals(byteArrayOf(1, 2, 3, 4).toList(), Typer().type<ByteArray>("AQIDBA==").toList())
+    }
 
+    enum class DemoEnum { HELLO, WORLD }
+
+    @Test
+    fun testEnum() {
+        assertEquals("HELLO", Typer().untype(DemoEnum.HELLO))
+        assertEquals("WORLD", Typer().untype(DemoEnum.WORLD))
+        assertEquals(DemoEnum.HELLO, Typer().type("HELLO"))
+        assertEquals(DemoEnum.WORLD, Typer().type("WORLD"))
+        assertEquals(null, Typer().type<DemoEnum?>("WORLD2"))
     }
 
     class VertxJsonObject(val map: Map<String, Any?>) : Iterable<Map.Entry<String, Any?>> {
