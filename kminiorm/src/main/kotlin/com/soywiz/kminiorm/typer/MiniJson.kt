@@ -8,7 +8,7 @@ object MiniJson {
         append('"')
         for (c in instance) {
             when (c) {
-                '\'' -> append("\\'")
+                '/' -> append("\\/")
                 '\b' -> append("\\b")
                 '\u000c' -> append("\\f")
                 '\n' -> append("\\n")
@@ -104,6 +104,7 @@ object MiniJson {
                             't' -> out.append('\t')
                             'r' -> out.append('\r')
                             'n' -> out.append('\n')
+                            'f' -> out.append('\u000c')
                             '\'' -> out.append('\'')
                             '\"' -> out.append('\"')
                             '\\' -> out.append('\\')

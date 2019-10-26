@@ -22,7 +22,8 @@ class MiniJsonTest {
         check("")
         check("a")
         check("hello")
-        check("a\"b\n\r\t'")
+        check("a\"b\n\r\t'\u000c\u70f5")
+        assertEquals("\"'hello'\"", MiniJson.stringify("'hello'"))
         //check(arrayOf("a", "b"))
         check(listOf("a", "b", 1, 2, mapOf("a" to 10, "b" to 100, "c" to mapOf("a" to null, "b" to false))))
     }
