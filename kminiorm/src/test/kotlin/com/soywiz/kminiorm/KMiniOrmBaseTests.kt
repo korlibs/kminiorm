@@ -143,8 +143,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testArrayOfCustom() = suspendTest {
-        val table = db.table<ArrayOfCustom>()
-        table.delete { everything }
+        val table = db.table<ArrayOfCustom>().apply { delete { everything } }
         val item = table.insert(ArrayOfCustom(listOf()))
         table.update(Partial(mapOf(
             "items" to listOf(mapOf("a" to 1, "b" to 2, "c" to 3))
@@ -152,7 +151,30 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals("[Custom(a=1, b=2, c=3)]", table.findOne { everything }?.items?.toString())
     }
 
+    @Test
+    fun testRefs() = suspendTest {
+        val refs1 = db.table<Ref1>().apply { delete { everything } }
+        val refs2 = db.table<Ref2>().apply { delete { everything } }
+        val rref2 = Ref2("hello")
+        val ref2 = refs2.insert(rref2)
+        val ref1 = refs1.insert(Ref1(listOf(ref2._id)))
+        assertEquals(1, refs1.find { everything }.count())
+        assertEquals(1, refs2.find { everything }.count())
+        val items = refs1.find { everything }.first().items.resolved(refs2)
+        assertEquals(listOf(rref2.name), items.map { it?.name })
+    }
+
     data class Custom(val a: Int, val b: Int, val c: Int)
+
+    data class Ref1(
+        val items: List<DbRef<Ref2>>,
+        override val _id: DbRef<Ref1> = DbRef()
+    ) : DbModel
+
+    data class Ref2(
+        val name: String,
+        override val _id: DbRef<Ref2> = DbRef()
+    ) : DbModel
 
     data class ArrayOfCustom(
         val items: List<Custom>,

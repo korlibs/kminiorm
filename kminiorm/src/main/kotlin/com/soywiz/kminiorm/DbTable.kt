@@ -14,6 +14,14 @@ interface DbModel {
 typealias DbTableElement = DbModel
 //typealias DbTableElement = Any
 
+suspend fun <T : DbTableElement> Iterable<DbRef<T>>.resolved(table: DbTable<T>): Iterable<T?> {
+    return this.map { it.resolved(table) }
+}
+
+suspend fun <T : DbTableElement> DbRef<T>.resolved(table: DbTable<T>): T? {
+    return table.findById(this)
+}
+
 //interface DbTable<T : Any> {
 interface DbTable<T : DbTableElement> {
     suspend fun showColumns(): Map<String, Map<String, Any?>>

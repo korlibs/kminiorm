@@ -333,6 +333,7 @@ class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<
                     String::class -> value.toString()
                     Number::class -> if (value is Number) value else value.toString().toDouble()
                     UUID::class -> value
+                    DbRef::class -> value
                     DbKey::class -> value
                     Date::class -> value
                     LocalDate::class -> value

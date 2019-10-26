@@ -8,8 +8,18 @@ import java.util.*
 import java.util.concurrent.atomic.*
 
 // From MongoDB DbKey
-class DbKey : Comparable<DbKey>, Serializable {
-    private constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) {
+class DbRef<T : DbTableElement> : DbKey {
+    @JvmOverloads
+    constructor(date: Date = Date()) : super(date)
+    constructor(hexString: String) : super(hexString)
+    constructor(bytes: ByteArray) : super(bytes)
+    internal constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) : super(timestamp, randomValue1, randomValue2, counter, checkCounter)
+}
+
+open class DbKey : Comparable<DbKey>, Serializable {
+    fun <T : DbTableElement> asRef() = DbRef<T>(timestamp, machineIdentifier, processIdentifier, counter, false)
+
+    internal constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) {
         require(randomValue1 and -0x1000000 == 0) { "The machine identifier must be between 0 and 16777215 (it must fit in three bytes)." }
         require(!(checkCounter && counter and -0x1000000 != 0)) { "The counter must be between 0 and 16777215 (it must fit in three bytes)." }
         this.timestamp = timestamp
@@ -189,7 +199,21 @@ fun ObjectMapper.registerDbKeyModule(serializeAsString: Boolean = true) {
 }
 */
 
-fun Typer.withDbKeyTyperUntyper(): Typer = this.withTyperUntyper<DbKey>(
+fun Typer.withDbKeyTyperUntyper(): Typer = this
+    .withTyperUntyper<DbRef<DbTableElement>>(
+        typer = { it, type ->
+            when (it) {
+                is DbRef<*> -> it as DbRef<DbTableElement>
+                is DbKey -> it.asRef()
+                is String -> DbRef(it)
+                else -> DbRef()
+            }
+        },
+        untyper = {
+            it.toHexString()
+        }
+    )
+    .withTyperUntyper<DbKey>(
         typer = { it, type ->
             when (it) {
                 is DbKey -> it
@@ -200,4 +224,4 @@ fun Typer.withDbKeyTyperUntyper(): Typer = this.withTyperUntyper<DbKey>(
         untyper = {
             it.toHexString()
         }
-)
+    )

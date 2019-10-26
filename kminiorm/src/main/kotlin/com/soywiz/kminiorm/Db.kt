@@ -15,7 +15,7 @@ interface Db {
 val __extrinsicUnquoted__ = "__extrinsic__"
 val __extrinsic__ = "\"$__extrinsicUnquoted__\""
 
-suspend inline fun <reified T : DbTableElement> Db.table() = table(T::class)
+suspend inline fun <reified T : DbTableElement> Db.table(): DbTable<T> = table(T::class)
 fun <T : DbTableElement> Db.tableBlocking(clazz: KClass<T>) = runBlocking { table(clazz) }
 inline fun <reified T : DbTableElement> Db.tableBlocking() = tableBlocking(T::class)
 

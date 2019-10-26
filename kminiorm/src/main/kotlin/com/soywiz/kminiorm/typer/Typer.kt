@@ -144,6 +144,7 @@ open class Typer private constructor(
                 else -> {
                     val data = _toMap(instance)
                     val constructor = targetClass.primaryConstructor
+                            ?: targetClass.constructors.firstOrNull { it.parameters.isNotEmpty() }
                             ?: targetClass.constructors.firstOrNull()
                     ?: error("Can't find constructor for $targetClass")
 
@@ -197,6 +198,7 @@ open class Typer private constructor(
             String::class -> ""
             List::class, ArrayList::class -> arrayListOf<Any?>()
             Map::class, HashMap::class, MutableMap::class -> mutableMapOf<Any?, Any?>()
+            DbRef::class -> DbRef<DbTableElement>(ByteArray(12))
             DbKey::class -> DbKey(ByteArray(12))
             else -> {
                 val constructor = clazz.primaryConstructor ?: clazz.constructors.firstOrNull { it.isAccessible }
