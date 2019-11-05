@@ -62,6 +62,7 @@ class TyperTest {
 
     @Test
     fun testEnum() {
+        assertEquals(DemoEnum.HELLO, Typer().createDefault(DemoEnum::class.starProjectedType))
         assertEquals("HELLO", Typer().untype(DemoEnum.HELLO))
         assertEquals("WORLD", Typer().untype(DemoEnum.WORLD))
         assertEquals(DemoEnum.HELLO, Typer().type("HELLO"))

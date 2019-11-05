@@ -185,6 +185,7 @@ open class Typer private constructor(
     fun createDefault(type: KType): Any? {
         if (type.isMarkedNullable) return null
         val clazz = type.jvmErasure
+        val jclazz = clazz.java
         return when (clazz) {
             Unit::class -> Unit
             Boolean::class -> false
@@ -201,9 +202,13 @@ open class Typer private constructor(
             DbRef::class -> DbRef<DbTableElement>(ByteArray(12))
             DbKey::class -> DbKey(ByteArray(12))
             else -> {
-                val constructor = clazz.primaryConstructor ?: clazz.constructors.firstOrNull { it.isAccessible }
+                if (jclazz.isEnum) {
+                    jclazz.enumConstants.first()
+                } else {
+                    val constructor = clazz.primaryConstructor ?: clazz.constructors.firstOrNull { it.isAccessible }
                     ?: error("Class $clazz doesn't have public constructors")
-                constructor.call(*constructor.valueParameters.map { createDefault(it.type) }.toTypedArray())
+                    constructor.call(*constructor.valueParameters.map { createDefault(it.type) }.toTypedArray())
+                }
             }
         }
     }
