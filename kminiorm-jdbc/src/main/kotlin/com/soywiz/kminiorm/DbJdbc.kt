@@ -3,6 +3,7 @@ package com.soywiz.kminiorm
 import com.soywiz.kminiorm.internal.*
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import java.io.*
 import java.sql.*
 import java.text.*
@@ -56,7 +57,7 @@ interface DbBase : Db, DbQueryable, DbQuoteable {
 }
 
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
-class JdbcDb(val connection: String, val user: String, val pass: String, override val dispatcher: CoroutineContext = Dispatchers.IO) : DbBase {
+class JdbcDb(val connection: String, val user: String, val pass: String, override val dispatcher: CoroutineContext = Dispatchers.IO, val typer: Typer = JdbcDbTyper) : DbBase {
     private val cachedTables = LinkedHashMap<KClass<*>, DbTable<*>>()
     override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = cachedTables.getOrPut(clazz) { DbJdbcTable(this, clazz).initialize() } as DbTable<T>
 
@@ -146,6 +147,7 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
 
 abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExtra {
     abstract val table: DbJdbcTable<T>
+    override val typer get() = table.db.typer
     private val _db get() = table.db
     private val _quotedTableName get() = table.quotedTableName
 
@@ -229,20 +231,30 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
         }
     }
 
-    override suspend fun find(skip: Long?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): List<T> {
-        return query(buildString {
+    override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Flow<Partial<T>> {
+        val data = query(buildString {
             append("SELECT ")
-            append("*")
+            if (fields != null) {
+                append(fields.mapNotNull { table.getColumnByProp(it) }.joinToString(", ") { it.quotedName })
+            } else {
+                append("*")
+            }
             append(" FROM ")
             append(_quotedTableName)
             append(" WHERE ")
             append(DbQueryBuilder.build(query).toString(_db))
+            if (sorted != null && sorted.isNotEmpty()) {
+                val orders = sorted.map { table.getColumnByProp(it.first)!!.quotedName + when { it.second > 0 -> " ASC"; it.second < 0 -> " DESC"; else -> "" } }
+                append(" ORDER BY ${orders.joinToString(", ")}")
+            }
             if (limit != null) append(" LIMIT $limit")
             if (skip != null) append(" OFFSET $skip")
             append(";")
-        }).map { JdbcDbTyper.type(it.mapValues { (key, value) ->
+        }).map { Partial(it.mapValues { (key, value) ->
             table.deserializeColumn(value, table.getColumnByName(key), key)
         }, table.clazz) }
+        // @TODO: Can we optimize this by streaming results?
+        return data.asFlow()
     }
 
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
@@ -283,7 +295,7 @@ interface ColumnExtra {
     val <T : Any> ColumnDef<T>.sqlType get() = property.returnType.toSqlType(db, property)
 }
 
-class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<T>) : SqlTable<T>(), ColumnExtra {
+class DbJdbcTable<T: DbTableElement>(override val db: JdbcDb, override val clazz: KClass<T>) : SqlTable<T>(), ColumnExtra {
     val ormTableInfo = OrmTableInfo(clazz)
     val tableName = ormTableInfo.tableName
     val quotedTableName = db.quoteTableName(tableName)
@@ -291,6 +303,7 @@ class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<
     val columns = ormTableInfo.columns
     val columnsByName = ormTableInfo.columnsByName
     fun getColumnByName(name: String) = ormTableInfo.getColumnByName(name)
+    fun getColumnByProp(prop: KProperty1<T, *>) = ormTableInfo.getColumnByProp(prop)
 
     override val table: DbJdbcTable<T> get() = this
     override suspend fun query(sql: String, vararg params: Any?): DbResult = db.query(sql, *params)
@@ -347,6 +360,7 @@ class DbJdbcTable<T: DbTableElement>(override val db: DbBase, val clazz: KClass<
 }
 
 class DbTableTransaction<T: DbTableElement>(override val table: DbJdbcTable<T>, val transaction: DbTransaction) : SqlTable<T>() {
+    override val clazz: KClass<T> get() = table.clazz
     override val db get() = table.db
 
     override suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R = db.transaction {

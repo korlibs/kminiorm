@@ -82,4 +82,5 @@ class OrmTableInfo<T : Any>(val clazz: KClass<T>) {
     val columnIndices = columns.filter { it.isAnyIndex }.sortedBy { it.indexOrder }.groupBy { it.indexName }
     val columnsByName = columns.associateBy { it.name }
     fun getColumnByName(name: String) = columnsByName[name]
+    fun getColumnByProp(prop: KProperty1<T, *>) = getColumnByName(prop.name)
 }

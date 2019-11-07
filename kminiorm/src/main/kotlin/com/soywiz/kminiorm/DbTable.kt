@@ -1,5 +1,7 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.typer.*
+import kotlinx.coroutines.flow.*
 import kotlin.reflect.*
 
 interface DbModel {
@@ -24,6 +26,9 @@ suspend fun <T : DbTableElement> DbRef<T>.resolved(table: DbTable<T>): T? {
 
 //interface DbTable<T : Any> {
 interface DbTable<T : DbTableElement> {
+    val clazz: KClass<T>
+    val typer: Typer
+
     suspend fun showColumns(): Map<String, Map<String, Any?>>
     suspend fun initialize(): DbTable<T>
     // C
@@ -31,7 +36,9 @@ interface DbTable<T : DbTableElement> {
     suspend fun insert(instance: Partial<T>): DbResult = insert(instance.data)
     suspend fun insert(data: Map<String, Any?>): DbResult
     // R
-    suspend fun find(skip: Long? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): List<T>
+    suspend fun findFlowPartial(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<Partial<T>>
+    suspend fun findFlow(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<T> = findFlowPartial(skip, limit, fields, sorted, query).map { typer.type(it.data, clazz) }
+    suspend fun find(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): List<T> = findFlow(skip, limit, fields, sorted, query).toList()
     suspend fun findAll(skip: Long? = null, limit: Long? = null): List<T> = find(skip = skip, limit = limit)
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query = query, limit = 1).firstOrNull()
     // U

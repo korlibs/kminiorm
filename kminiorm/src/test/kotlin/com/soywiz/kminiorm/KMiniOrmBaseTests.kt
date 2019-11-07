@@ -1,5 +1,7 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.typer.*
+import kotlinx.coroutines.flow.*
 import java.util.*
 import kotlin.test.*
 
@@ -164,7 +166,26 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals(listOf(rref2.name), items.map { it?.name })
     }
 
+    @Test
+    fun testEverything() = suspendTest {
+        val simples = db.table<Simple>().apply { delete { everything } }
+        val s1 = Simple(1, 2, 3)
+        val s2 = Simple(10, 20, 30)
+        val s3 = Simple(100, 200, 300)
+        simples.insert(s1)
+        simples.insert(s2)
+        simples.insert(s3)
+        val result = simples.findFlowPartial(skip = 1L, limit = 2L, fields = listOf(Simple::b, Simple::c), sorted = listOf(Simple::c to -1)) { everything }
+        //assertEquals("""[{"b":20,"c":30},{"b":2,"c":3}]""", MiniJson.stringify(result.map { it.without(Simple::_id).data }.toList()))
+        assertEquals("""[{"b":20,"c":30},{"b":2,"c":3}]""", MiniJson.stringify(result.map { it.data }.toList()))
+    }
+
     data class Custom(val a: Int, val b: Int, val c: Int)
+
+    data class Simple(
+            val a: Int, val b: Int, val c: Int,
+            override val _id: DbRef<Ref1> = DbRef()
+    ) : DbModel
 
     data class Ref1(
         val items: List<DbRef<Ref2>>,

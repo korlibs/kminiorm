@@ -7,6 +7,7 @@ import com.mongodb.client.model.*
 import com.mongodb.client.result.*
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import org.bson.*
 import org.bson.types.*
 import java.util.*
@@ -33,7 +34,8 @@ class DbMongo private constructor(val mongoClient: MongoClient, val client: Mong
     override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = cachedTables.getOrPut(clazz) { DbTableMongo(this, clazz).initialize() } as DbTable<T>
 }
 
-class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : DbTable<T> {
+class DbTableMongo<T : DbTableElement>(val db: DbMongo, override val clazz: KClass<T>) : DbTable<T> {
+    override val typer get() = db.typer
     val ormTableInfo by lazy { OrmTableInfo(clazz) }
     val collection get() = ormTableInfo.tableName
     val mongo get() = db.client
@@ -55,8 +57,8 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
             val map = columns.map { it.name to it.indexDirection.sign }.toMap()
             //println("INDEX: indexName=$indexName, map=$map")
             dbCollection.createIndex(
-                Document(map),
-                IndexOptions().name(indexName).unique(isUnique).background(true)
+                    Document(map),
+                    IndexOptions().name(indexName).unique(isUnique).background(true)
             ) { result, t -> }
         }
     }
@@ -79,16 +81,35 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : 
         }
     }
 
-    override suspend fun find(skip: Long?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): List<T> {
+    override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Flow<Partial<T>> {
         val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject(db)
+        val wantsId = fields?.any { it.name == "_id" } ?: true
         //println("QUERY: $rquery")
         val result = dbCollection.find(rquery)
-            .let { if (skip != null) it.limit(skip.toInt()) else it }
-            .let { if (limit != null) it.limit(limit.toInt()) else it }
-        val items = arrayListOf<Document>()
-        awaitMongo<Void> { result.forEach(Block { items.add(it) }, it) }
+                .let { if (skip != null) it.skip(skip.toInt()) else it }
+                .let { if (limit != null) it.limit(limit.toInt()) else it }
+                .let { if (fields != null) it.projection(BsonDocument(
+                        fields.map { BsonElement(ormTableInfo.getColumnByProp(it)!!.name, BsonInt32(1)) }
+                )) else it }
+                .let { if (sorted != null) it.sort(BsonDocument(
+                        sorted.map { pair -> BsonElement(
+                                ormTableInfo.getColumnByProp(pair.first)!!.name,
+                                BsonInt32(pair.second)
+                        ) }
+                )) else it }
 
-        return items.map { db.typer.type<T>(it, clazz) }
+        return channelFlow {
+            val deferred = CompletableDeferred<Unit>()
+            result.forEach(
+                    {
+                        val partial = Partial(it, clazz)
+                        val fpartial = if (wantsId) partial else partial.without(DbTableElement::_id as KProperty1<T, *>)
+                        this@channelFlow.offer(fpartial)
+                    },
+                    { result, t -> deferred.complete(Unit) }
+            )
+            deferred.await()
+        }
     }
 
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
@@ -145,7 +166,7 @@ sealed class MongoQueryNode {
                 else -> value
             }
             return Document(
-                mapOf(left.name to if (op == "\$eq") v else mapOf(op to v))
+                    mapOf(left.name to if (op == "\$eq") v else mapOf(op to v))
             )
         }
     }
@@ -200,38 +221,38 @@ fun <T> DbQuery<T>.toMongoMap(): MongoQueryNode = when (this) {
 }
 
 private val mongoTyper = DbTyper
-    .withKeepType<ObjectId>()
-    .withTyperUntyper(
-        typer = { it, type ->
-            when (it) {
-                is ObjectId -> DbKey(it.toHexString())
-                else -> DbKey(it.toString())
-            }
-        },
-        untyper = { ObjectId(it.toHexString()) }
-    )
-    .withTyperUntyper<ByteArray>(
-        typer = { it, type ->
-            when (it) {
-                is ByteArray -> it
-                is Binary -> it.data
-                is String -> it.fromBase64()
-                else -> error("Unknown how to decode $it to $type")
-            }
-        },
-        untyper = { it.toBase64() }
-    )
-    .withTyperUntyper<Binary>(
-        typer = { it, type ->
-            when (it) {
-                is ByteArray -> Binary(it)
-                is Binary -> it
-                is String -> Binary(it.fromBase64())
-                else -> error("Unknown how to decode $it to $type")
-            }
-        },
-        untyper = { it.data.toBase64() }
-    )
+        .withKeepType<ObjectId>()
+        .withTyperUntyper(
+                typer = { it, type ->
+                    when (it) {
+                        is ObjectId -> DbKey(it.toHexString())
+                        else -> DbKey(it.toString())
+                    }
+                },
+                untyper = { ObjectId(it.toHexString()) }
+        )
+        .withTyperUntyper<ByteArray>(
+                typer = { it, type ->
+                    when (it) {
+                        is ByteArray -> it
+                        is Binary -> it.data
+                        is String -> it.fromBase64()
+                        else -> error("Unknown how to decode $it to $type")
+                    }
+                },
+                untyper = { it.toBase64() }
+        )
+        .withTyperUntyper<Binary>(
+                typer = { it, type ->
+                    when (it) {
+                        is ByteArray -> Binary(it)
+                        is Binary -> it
+                        is String -> Binary(it.fromBase64())
+                        else -> error("Unknown how to decode $it to $type")
+                    }
+                },
+                untyper = { it.data.toBase64() }
+        )
 
 private fun ByteArray.toBase64(): String = Base64.getEncoder().encodeToString(this)
 private fun String.fromBase64(): ByteArray = Base64.getDecoder().decode(this)
