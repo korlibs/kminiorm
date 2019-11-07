@@ -105,11 +105,22 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, override val clazz: KCla
             val deferred = CompletableDeferred<Unit>()
             result.forEach(
                     {
-                        val partial = Partial(it, clazz)
-                        val fpartial = if (wantsId) partial else partial.without(DbTableElement::_id as KProperty1<T, *>)
-                        this@channelFlow.offer(fpartial)
+                        try {
+                            val partial = Partial(it, clazz)
+                            val fpartial = if (wantsId) partial else partial.without(DbTableElement::_id as KProperty1<T, *>)
+                            this@channelFlow.offer(fpartial)
+                        } catch (e: Throwable) {
+                            deferred.completeExceptionally(e)
+                            throw e
+                        }
                     },
-                    { result, t -> deferred.complete(Unit) }
+                    { result, t ->
+                        if (t != null) {
+                            deferred.completeExceptionally(t)
+                        } else {
+                            deferred.complete(Unit)
+                        }
+                    }
             )
             deferred.await()
         }
