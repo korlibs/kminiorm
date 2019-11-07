@@ -96,6 +96,13 @@ class TyperTest {
         assertEquals(Mixed(listOf(Mixed.Compound(1, 2))), partial3.complete)
     }
 
+    @Test
+    fun testInline() {
+        val instance = MyClassWithInlineParams(MyInlineClass(10))
+        assertEquals(instance, DbTyper.type(DbTyper.untype(instance)))
+        assertEquals(instance.param, DbTyper.type(DbTyper.untype(instance.param)))
+    }
+
     data class Mixed(val list: List<Compound>) {
         data class Compound(val a: Int, val b: Int)
     }
@@ -110,4 +117,8 @@ class TyperTest {
         data class Item(val name: String, val sub: SubItem)
         data class SubItem(val name: String)
     }
+
+    data class MyClassWithInlineParams(val param: MyInlineClass)
 }
+
+inline class MyInlineClass(val value: Int)
