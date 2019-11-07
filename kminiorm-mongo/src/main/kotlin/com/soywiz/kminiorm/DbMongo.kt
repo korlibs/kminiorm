@@ -29,7 +29,8 @@ class DbMongo private constructor(val mongoClient: MongoClient, val client: Mong
         }
     }
 
-    override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = DbTableMongo(this, clazz).initialize()
+    private val cachedTables = LinkedHashMap<KClass<*>, DbTable<*>>()
+    override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = cachedTables.getOrPut(clazz) { DbTableMongo(this, clazz).initialize() } as DbTable<T>
 }
 
 class DbTableMongo<T : DbTableElement>(val db: DbMongo, val clazz: KClass<T>) : DbTable<T> {

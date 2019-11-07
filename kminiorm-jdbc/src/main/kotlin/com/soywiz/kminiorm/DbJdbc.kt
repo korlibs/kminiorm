@@ -57,7 +57,8 @@ interface DbBase : Db, DbQueryable, DbQuoteable {
 
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
 class JdbcDb(val connection: String, val user: String, val pass: String, override val dispatcher: CoroutineContext = Dispatchers.IO) : DbBase {
-    override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz).initialize()
+    private val cachedTables = LinkedHashMap<KClass<*>, DbTable<*>>()
+    override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = cachedTables.getOrPut(clazz) { DbJdbcTable(this, clazz).initialize() } as DbTable<T>
 
     @PublishedApi
     internal val connectionPool = InternalDbPool {
