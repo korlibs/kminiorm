@@ -180,6 +180,34 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals("""[{"b":20,"c":30},{"b":2,"c":3}]""", MiniJson.stringify(result.map { it.data }.toList()))
     }
 
+    @Test
+    fun testOrIn() = suspendTest {
+        val simples = db.table<Simple>().apply { delete { everything } }
+        val s1 = Simple(1, 2, 3)
+        val s2 = Simple(10, 20, 30)
+        val s3 = Simple(100, 200, 300)
+        simples.insert(s1)
+        simples.insert(s2)
+        simples.insert(s3)
+        assertEquals(listOf(s2, s3), simples.find { (Simple::b eq 20) OR (Simple::c eq 300) }.sortedBy { it.b })
+        assertEquals(listOf(s2, s3), simples.find { (Simple::b IN listOf(20, 200)) }.sortedBy { it.b })
+    }
+
+    @Test
+    fun testGe() = suspendTest {
+        val simples = db.table<Simple>().apply { delete { everything } }
+        val s1 = Simple(1, 2, 3)
+        val s2 = Simple(10, 20, 30)
+        val s3 = Simple(100, 200, 300)
+        simples.insert(s1)
+        simples.insert(s2)
+        simples.insert(s3)
+        assertEquals(listOf(s3), simples.find { (Simple::b gt 20) }.sortedBy { it.b })
+        assertEquals(listOf(s2, s3), simples.find { (Simple::b ge 20) }.sortedBy { it.b })
+        assertEquals(listOf(s1, s2), simples.find { (Simple::b le 20) }.sortedBy { it.b })
+        assertEquals(listOf(s1), simples.find { (Simple::b lt 20) }.sortedBy { it.b })
+    }
+
     data class Custom(val a: Int, val b: Int, val c: Int)
 
     data class Simple(

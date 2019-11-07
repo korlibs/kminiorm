@@ -18,6 +18,9 @@ import kotlin.reflect.*
 //fun Vertx.createMongo(connectionString: String): DbMongo =
 //        DbMongo(MongoClient.createShared(this, JsonObject(mapOf("connection_string" to connectionString))))
 
+//val DEBUG_MONGO = true
+val DEBUG_MONGO = false
+
 class DbMongo private constructor(val mongoClient: MongoClient, val client: MongoDatabase, val typer: Typer) : Db {
     companion object {
         /**
@@ -84,7 +87,7 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, override val clazz: KCla
     override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Flow<Partial<T>> {
         val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject(db)
         val wantsId = fields?.any { it.name == "_id" } ?: true
-        //println("QUERY: $rquery")
+        if (DEBUG_MONGO) println("QUERY: $rquery")
         val result = dbCollection.find(rquery)
                 .let { if (skip != null) it.skip(skip.toInt()) else it }
                 .let { if (limit != null) it.limit(limit.toInt()) else it }
@@ -179,8 +182,17 @@ sealed class MongoQueryNode {
         override fun toJsonObject(db: DbMongo) = Document(mapOf("__UNIEXIStan__T" to "impossibl€"))
     }
 
-    class And(val left: MongoQueryNode, val right: MongoQueryNode) : MongoQueryNode() {
-        override fun toJsonObject(db: DbMongo) = Document(left.toJsonObject(db) + right.toJsonObject(db))
+    class Binop(val left: MongoQueryNode, val op: DbQueryBinOp, val right: MongoQueryNode) : MongoQueryNode() {
+        override fun toJsonObject(db: DbMongo) = when (op) {
+            DbQueryBinOp.AND -> Document(left.toJsonObject(db) + right.toJsonObject(db))
+            else -> Document(mapOf(op.toMongoOp() to listOf(left.toJsonObject(db), right.toJsonObject(db))))
+        }
+    }
+
+    class In(val left: KProperty<*>, val items: List<Any?>) : MongoQueryNode() {
+        override fun toJsonObject(db: DbMongo) = Document(mapOf(
+                left.name to mapOf("\$in" to items)
+        ))
     }
 
     class Raw(val json: Document) : MongoQueryNode() {
@@ -198,8 +210,8 @@ fun DbQueryBinOp.toMongoOp() = when (this) {
     DbQueryBinOp.NE -> "\$ne"
     DbQueryBinOp.GT -> "\$gt"
     DbQueryBinOp.LT -> "\$lt"
-    DbQueryBinOp.GE -> "\$ge"
-    DbQueryBinOp.LE -> "\$le"
+    DbQueryBinOp.GE -> "\$gte"
+    DbQueryBinOp.LE -> "\$lte"
 }
 
 fun DbQueryUnOp.toMongoOp() = when (this) {
@@ -210,12 +222,9 @@ fun <T> DbQuery<T>.toMongoMap(): MongoQueryNode = when (this) {
     is DbQuery.BinOp<*, *> -> MongoQueryNode.PropComparison(this.op.toMongoOp(), this.prop, this.literal)
     is DbQuery.Always<*> -> MongoQueryNode.Always()
     is DbQuery.Never<*> -> MongoQueryNode.Never()
-    is DbQuery.BinOpNode<*> -> when (this.op) {
-        DbQueryBinOp.AND -> MongoQueryNode.And(left.toMongoMap(), right.toMongoMap())
-        else -> TODO("Operator ${this.op}")
-    }
+    is DbQuery.BinOpNode<*> -> MongoQueryNode.Binop(left.toMongoMap(), this.op, right.toMongoMap())
     is DbQuery.UnOpNode<*> -> TODO("Unary ${this.op}")
-    is DbQuery.IN<*, *> -> TODO("IN")
+    is DbQuery.IN<*, *> -> MongoQueryNode.In(this.prop, this.literal)
     is DbQuery.Raw<*> -> MongoQueryNode.Raw(Document(map))
     else -> TODO()
 }
