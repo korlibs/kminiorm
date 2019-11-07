@@ -191,7 +191,7 @@ sealed class MongoQueryNode {
 
     class In(val left: KProperty<*>, val items: List<Any?>) : MongoQueryNode() {
         override fun toJsonObject(db: DbMongo) = Document(mapOf(
-                left.name to mapOf("\$in" to items)
+                left.name to mapOf("\$in" to items.map { if (it != null) db.typer.untype(it) else null })
         ))
     }
 

@@ -194,6 +194,19 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     }
 
     @Test
+    fun testOrIn2() = suspendTest {
+        val simples = db.table<Simple>().apply { delete { everything } }
+        val s1 = Simple(1, 2, 3)
+        val s2 = Simple(10, 20, 30)
+        val s3 = Simple(100, 200, 300)
+        simples.insert(s1)
+        simples.insert(s2)
+        simples.insert(s3)
+        assertEquals(listOf(s2, s3), simples.find { (Simple::_id eq s2._id) OR (Simple::_id eq s3._id) }.sortedBy { it.b })
+        assertEquals(listOf(s2, s3), simples.find { (Simple::_id IN listOf(s2._id, s3._id)) }.sortedBy { it.b })
+    }
+
+    @Test
     fun testGe() = suspendTest {
         val simples = db.table<Simple>().apply { delete { everything } }
         val s1 = Simple(1, 2, 3)
