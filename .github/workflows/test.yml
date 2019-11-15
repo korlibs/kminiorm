@@ -9,5 +9,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v1
+    - name: Start MongoDB As Docker
+      uses: wbari/start-mongoDB@v0.1
     - name: Test
       run: ./gradlew check
