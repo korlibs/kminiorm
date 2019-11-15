@@ -61,7 +61,7 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, override val clazz: KCla
             //println("INDEX: indexName=$indexName, map=$map")
             dbCollection.createIndex(
                     Document(map),
-                    IndexOptions().name(indexName).unique(isUnique).background(true)
+                    IndexOptions().name(indexName).unique(isUnique).background(false)
             ) { result, t -> }
         }
     }
