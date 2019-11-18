@@ -51,10 +51,10 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals(
                 1L,
                 table.update(
-                    increment = Partial(
-                            MyCounterTable::counter1 to +10,
-                            MyCounterTable::counter2 to -10
-                    )
+                        increment = Partial(
+                                MyCounterTable::counter1 to +10,
+                                MyCounterTable::counter2 to -10
+                        )
                 ) { MyCounterTable::_id eq item._id }
         )
         val item2 = table.findById(item._id)
@@ -148,7 +148,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         val table = db.table<ArrayOfCustom>().apply { delete { everything } }
         val item = table.insert(ArrayOfCustom(listOf()))
         table.update(Partial(mapOf(
-            "items" to listOf(mapOf("a" to 1, "b" to 2, "c" to 3))
+                "items" to listOf(mapOf("a" to 1, "b" to 2, "c" to 3))
         ), ArrayOfCustom::class)) { id(item._id) }
         assertEquals("[Custom(a=1, b=2, c=3)]", table.findOne { everything }?.items?.toString())
     }
@@ -221,6 +221,24 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals(listOf(s1), simples.find { (Simple::b lt 20) }.sortedBy { it.b })
     }
 
+    @Test
+    fun testEnum() = suspendTest {
+        val simples = db.table<CustomWithEnum>().apply { delete { everything } }
+        val item1 = CustomWithEnum(1, "hello", CustomEnum.HELLO)
+        simples.insert(item1)
+        assertEquals(1, simples.findAll().count())
+        assertEquals(item1, simples.findAll().first())
+    }
+
+    data class CustomWithEnum(
+            val a: Int,
+            val c: String,
+            val menum: CustomEnum,
+            override val _id: DbRef<Ref1> = DbRef()
+    ) : DbModel
+
+    enum class CustomEnum { TEST, HELLO, WORLD }
+
     data class Custom(val a: Int, val b: Int, val c: Int)
 
     data class Simple(
@@ -229,59 +247,59 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     ) : DbModel
 
     data class Ref1(
-        val items: List<DbRef<Ref2>>,
-        override val _id: DbRef<Ref1> = DbRef()
+            val items: List<DbRef<Ref2>>,
+            override val _id: DbRef<Ref1> = DbRef()
     ) : DbModel
 
     data class Ref2(
-        val name: String,
-        override val _id: DbRef<Ref2> = DbRef()
+            val name: String,
+            override val _id: DbRef<Ref2> = DbRef()
     ) : DbModel
 
     data class ArrayOfCustom(
-        val items: List<Custom>,
-        override val _id: DbKey = DbKey()
+            val items: List<Custom>,
+            override val _id: DbKey = DbKey()
     ) : DbModel
 
     data class ArrayOfDbKey(
-        val items: List<DbKey>,
-        override val _id: DbKey = DbKey()
+            val items: List<DbKey>,
+            override val _id: DbKey = DbKey()
     ) : DbModel
 
     data class StoreTypesTable(
-        val bool: Boolean,
-        override val _id: DbKey = DbKey()
+            val bool: Boolean,
+            override val _id: DbKey = DbKey()
     ) : DbModel
 
     data class MultiColumnIndexTable(
-        @DbUnique(name = "a_b")
-        val a: String,
-        @DbUnique(name = "a_b")
-        val b: String,
-        val c: String,
-        override val _id: DbKey = DbKey()
+            @DbUnique(name = "a_b")
+            val a: String,
+            @DbUnique(name = "a_b")
+            val b: String,
+            val c: String,
+            override val _id: DbKey = DbKey()
     ) : DbModel.BaseWithExtrinsic(_id)
 
     data class TableExtrinsic(
-        @DbUnique
-        val name: String,
-        override val _id: DbKey = DbKey()
+            @DbUnique
+            val name: String,
+            override val _id: DbKey = DbKey()
     ) : DbModel, ExtrinsicData by ExtrinsicData.Mixin()
 
     @DbName("MyUpgradeableTable")
     data class TableV1(
-        @DbUnique
-        val name: String,
-        val fieldV1: String,
-        override val _id: DbKey = DbKey()
+            @DbUnique
+            val name: String,
+            val fieldV1: String,
+            override val _id: DbKey = DbKey()
     ) : DbModel
 
     @DbName("MyUpgradeableTable")
     data class TableV2(
-        @DbUnique
-        val name: String,
-        val fieldV2: String,
-        override val _id: DbKey = DbKey()
+            @DbUnique
+            val name: String,
+            val fieldV2: String,
+            override val _id: DbKey = DbKey()
     ) : DbModel
 
     data class UpsertTestModel(

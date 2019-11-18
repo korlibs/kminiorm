@@ -351,7 +351,16 @@ class DbJdbcTable<T: DbTableElement>(override val db: JdbcDb, override val clazz
                     DbKey::class -> value
                     Date::class -> value
                     LocalDate::class -> value
-                    else -> JsonTyper.type(MiniJson.parse(value.toString()) ?: Unit, column.jclazz)
+                    else -> {
+                        val clazz = column.jclazz.java
+                        if (clazz.isEnum && value is String) {
+                            // @TODO: Cache
+                            val constants = clazz.enumConstants.associateBy { it.toString().toUpperCase().trim() }
+                            return constants[value.toUpperCase().trim()] ?: constants.values.first()
+                        } else {
+                            JsonTyper.type(MiniJson.parse(value.toString()) ?: Unit, column.jclazz)
+                        }
+                    }
                 }
                 else -> value
             }
