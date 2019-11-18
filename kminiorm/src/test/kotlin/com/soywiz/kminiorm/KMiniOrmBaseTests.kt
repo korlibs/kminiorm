@@ -228,6 +228,8 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         simples.insert(item1)
         assertEquals(1, simples.findAll().count())
         assertEquals(item1, simples.findAll().first())
+        assertEquals(item1, simples.find { CustomWithEnum::menum eq CustomEnum.HELLO }.first())
+        assertEquals(0, simples.find { CustomWithEnum::menum eq CustomEnum.WORLD }.count())
     }
 
     data class CustomWithEnum(
