@@ -7,6 +7,7 @@ import com.mongodb.client.model.*
 import com.mongodb.client.result.*
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.*
 import kotlinx.coroutines.flow.*
 import org.bson.*
 import org.bson.types.*
@@ -89,6 +90,7 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, override val clazz: KCla
         val wantsId = fields?.any { it.name == "_id" } ?: true
         if (DEBUG_MONGO) println("QUERY: $rquery")
         val result = dbCollection.find(rquery)
+                //.batchSize(50).limit(1000)
                 .let { if (skip != null) it.skip(skip.toInt()) else it }
                 .let { if (limit != null) it.limit(limit.toInt()) else it }
                 .let { if (fields != null) it.projection(BsonDocument(
@@ -101,29 +103,29 @@ class DbTableMongo<T : DbTableElement>(val db: DbMongo, override val clazz: KCla
                         ) }
                 )) else it }
 
-        return channelFlow {
-            val deferred = CompletableDeferred<Unit>()
-            result.forEach(
-                    {
-                        try {
-                            val partial = Partial(it, clazz)
-                            val fpartial = if (wantsId) partial else partial.without(DbTableElement::_id as KProperty1<T, *>)
-                            this@channelFlow.offer(fpartial)
-                        } catch (e: Throwable) {
-                            deferred.completeExceptionally(e)
-                            throw e
-                        }
-                    },
-                    { result, t ->
-                        if (t != null) {
-                            deferred.completeExceptionally(t)
-                        } else {
-                            deferred.complete(Unit)
-                        }
-                    }
-            )
-            deferred.await()
-        }
+        val channel = Channel<Partial<T>>(Channel.UNLIMITED)
+        //var n = 0
+        result.forEach(
+            {
+                try {
+                    val partial = Partial(it, clazz)
+                    val fpartial = if (wantsId) partial else partial.without(DbTableElement::_id as KProperty1<T, *>)
+                    //n++
+                    //println("ITEM: $n")
+                    channel.offer(fpartial)
+                } catch (e: Throwable) {
+                    //println("EXCEPTION")
+                    channel.close(e)
+                    throw e
+                }
+            },
+            { result, t ->
+                //println("FINISHED! $result, $t")
+                channel.close(t)
+            }
+        )
+        return channel.consumeAsFlow()
+        //return flow { try {  while (true) emit(channel.receive())  } catch (e: ClosedReceiveChannelException) {  }  }
     }
 
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {

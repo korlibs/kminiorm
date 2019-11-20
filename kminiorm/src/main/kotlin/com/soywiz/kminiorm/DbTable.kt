@@ -9,8 +9,8 @@ interface DbModel {
     @DbPrimary
     val _id: DbKey
 
-    open class Base(override val _id: DbKey = DbKey()) : DbModel
-    open class BaseWithExtrinsic(override val _id: DbKey = DbKey()) : DbModel, ExtrinsicData by ExtrinsicData.Mixin()
+    open class Base<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : DbModel
+    open class BaseWithExtrinsic<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : DbModel, ExtrinsicData by ExtrinsicData.Mixin()
 }
 
 typealias DbTableElement = DbModel

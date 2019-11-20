@@ -48,15 +48,15 @@ class JdbcDbTest {
         assertEquals("hello", demoTable.find().first().item.name)
     }
 
-    data class Demo4(val item: Item) : DbModel.Base() {
+    data class Demo4(val item: Item) : DbModel.Base<Demo4>() {
         data class Item(val name: String)
     }
 
-    data class Demo3(val items: List<Item>) : DbModel.Base() {
+    data class Demo3(val items: List<Item>) : DbModel.Base<Demo3>() {
         data class Item(val name: String)
     }
 
-    data class Demo2(val bytes: ByteArray, val time: Date = Date()) : DbModel.Base()
+    data class Demo2(val bytes: ByteArray, val time: Date = Date()) : DbModel.Base<Demo2>()
 
     data class Demo(
             @DbUnique override val _id: DbKey = DbKey(),
