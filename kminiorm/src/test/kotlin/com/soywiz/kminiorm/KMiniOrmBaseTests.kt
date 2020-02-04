@@ -232,6 +232,17 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals(0, simples.find { CustomWithEnum::menum eq CustomEnum.WORLD }.count())
     }
 
+    @Test
+    fun testIntKey() = suspendTest {
+        val table = db.table<MyIntKey>().apply { delete { everything } }
+        table.insert(MyIntKey(DbIntRef(100L)))
+        assertEquals("100", table.findAll().first().key.toString())
+    }
+
+    data class MyIntKey(
+        val key: DbIntRef<MyIntKey>
+    ) : DbModel.Base<MyIntKey>()
+
     data class CustomWithEnum(
             val a: Int,
             val c: String,

@@ -8,8 +8,15 @@ import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
 
 interface Db {
-    suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T>
+    suspend fun <T : DbTableElement> table(clazz: KClass<T>, initialize: Boolean = true): DbTable<T>
     companion object
+}
+
+abstract class AbstractDb : Db {
+    private val cachedTables = java.util.LinkedHashMap<KClass<*>, DbTable<*>>()
+    override suspend fun <T : DbTableElement> table(clazz: KClass<T>, initialize: Boolean): DbTable<T> = cachedTables.getOrPut(clazz) { constructTable(clazz).also { if (initialize) it.initialize() } } as DbTable<T>
+
+    protected abstract fun <T : DbTableElement> constructTable(clazz: KClass<T>): DbTable<T>
 }
 
 val __extrinsicUnquoted__ = "__extrinsic__"

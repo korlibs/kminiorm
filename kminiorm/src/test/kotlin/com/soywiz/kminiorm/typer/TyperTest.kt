@@ -103,6 +103,11 @@ class TyperTest {
         assertEquals(instance.param, DbTyper.type(DbTyper.untype(instance.param)))
     }
 
+    @Test
+    fun testDbKeyTyper() {
+        assertEquals("100", DbTyper.type<DbIntKey>(100).toString())
+    }
+
     data class Mixed(val list: List<Compound>) {
         data class Compound(val a: Int, val b: Int)
     }

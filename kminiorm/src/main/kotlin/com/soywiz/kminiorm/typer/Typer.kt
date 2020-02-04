@@ -201,6 +201,8 @@ open class Typer private constructor(
             Map::class, HashMap::class, MutableMap::class -> mutableMapOf<Any?, Any?>()
             DbRef::class -> DbRef<DbTableElement>(ByteArray(12))
             DbKey::class -> DbKey(ByteArray(12))
+            DbIntRef::class -> DbIntRef<DbTableElement>()
+            DbIntKey::class -> DbIntKey(0L)
             else -> {
                 if (jclazz.isEnum) {
                     jclazz.enumConstants.first()

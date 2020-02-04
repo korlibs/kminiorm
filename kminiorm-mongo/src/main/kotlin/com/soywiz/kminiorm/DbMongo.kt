@@ -22,7 +22,7 @@ import kotlin.reflect.*
 //val DEBUG_MONGO = true
 val DEBUG_MONGO = false
 
-class DbMongo private constructor(val mongoClient: MongoClient, val client: MongoDatabase, val typer: Typer) : Db {
+class DbMongo private constructor(val mongoClient: MongoClient, val client: MongoDatabase, val typer: Typer) : AbstractDb() {
     companion object {
         /**
          * Example: DbMongo("mongodb://127.0.0.1:27017/kminiormtest")
@@ -34,8 +34,7 @@ class DbMongo private constructor(val mongoClient: MongoClient, val client: Mong
         }
     }
 
-    private val cachedTables = LinkedHashMap<KClass<*>, DbTable<*>>()
-    override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = cachedTables.getOrPut(clazz) { DbTableMongo(this, clazz).initialize() } as DbTable<T>
+    override fun <T : DbTableElement> constructTable(clazz: KClass<T>): DbTable<T> = DbTableMongo(this, clazz)
 }
 
 class DbTableMongo<T : DbTableElement>(val db: DbMongo, override val clazz: KClass<T>) : DbTable<T> {

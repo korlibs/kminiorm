@@ -56,10 +56,48 @@ interface DbBase : Db, DbQueryable, DbQuoteable {
     suspend fun <T> transaction(callback: suspend DbTransaction.() -> T): T
 }
 
+open class SqlDialect() : DbQuoteable {
+    companion object ANSI : SqlDialect()
+
+    override fun quoteColumnName(str: String) = _quote(str)
+    override fun quoteTableName(str: String) = _quote(str)
+    override fun quoteString(str: String) = _quote(str, type = '\'')
+    override fun quoteLiteral(value: Any?) = when (value) {
+        null -> "NULL"
+        is Int, is Long, is Float, is Double, is Number -> "$value"
+        is String -> quoteString(value)
+        else -> quoteString("$value")
+    }
+
+    protected fun _quote(str: String, type: Char = '"') = buildString {
+        append(type)
+        for (char in str) {
+            if (char == type) {
+                append(type)
+                append(type)
+            } else {
+                append(char)
+            }
+        }
+        append(type)
+    }
+}
+
+open class MySqlDialect : SqlDialect() {
+    companion object : MySqlDialect()
+    override fun quoteColumnName(str: String) = _quote(str, '`')
+    override fun quoteTableName(str: String) = _quote(str, '`')
+}
+
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
-class JdbcDb(val connection: String, val user: String, val pass: String, override val dispatcher: CoroutineContext = Dispatchers.IO, val typer: Typer = JdbcDbTyper) : DbBase {
-    private val cachedTables = LinkedHashMap<KClass<*>, DbTable<*>>()
-    override suspend fun <T : DbTableElement> table(clazz: KClass<T>): DbTable<T> = cachedTables.getOrPut(clazz) { DbJdbcTable(this, clazz).initialize() } as DbTable<T>
+class JdbcDb(
+    val connection: String,
+    val user: String, val pass: String,
+    override val dispatcher: CoroutineContext = Dispatchers.IO,
+    val typer: Typer = JdbcDbTyper,
+    val dialect: SqlDialect = SqlDialect.ANSI
+) : AbstractDb(), DbBase, DbQuoteable by dialect {
+    override fun <T : DbTableElement> constructTable(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz)
 
     @PublishedApi
     internal val connectionPool = InternalDbPool {
@@ -82,29 +120,6 @@ class JdbcDb(val connection: String, val user: String, val pass: String, overrid
         }
     }
 
-    override fun quoteColumnName(str: String) = _quote(str)
-    override fun quoteTableName(str: String) = _quote(str)
-    override fun quoteString(str: String) = _quote(str, type = '\'')
-    override fun quoteLiteral(value: Any?) = when (value) {
-        null -> "NULL"
-        is Int, is Long, is Float, is Double, is Number -> "$value"
-        is String -> quoteString(value)
-        else -> quoteString("$value")
-    }
-
-    private fun _quote(str: String, type: Char = '"') = buildString {
-        append(type)
-        for (char in str) {
-            if (char == type) {
-                append(type)
-                append(type)
-            } else {
-                append(char)
-            }
-        }
-        append(type)
-    }
-
     override suspend fun query(sql: String, vararg params: Any?) = transaction { query(sql, *params) }
 }
 
@@ -124,7 +139,8 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
         if (DEBUG_JDBC) println("QUERY: $sql, ${params.toList()}")
-        return withContext(db.dispatcher) {
+        //return withContext(db.dispatcher) {
+        return run {
             val statement = connection.prepareStatement(sql)
             for (index in params.indices) {
                 val param = params[index]
@@ -338,6 +354,7 @@ class DbJdbcTable<T: DbTableElement>(override val db: JdbcDb, override val clazz
             is Blob -> value.binaryStream.readBytes()
             is UUID -> value
             is DbKey -> value
+            is DbIntKey -> value
             is Timestamp -> Date(value.time)
             is Date -> value
             is LocalDate -> value
@@ -349,6 +366,8 @@ class DbJdbcTable<T: DbTableElement>(override val db: JdbcDb, override val clazz
                     UUID::class -> value
                     DbRef::class -> value
                     DbKey::class -> value
+                    DbIntRef::class -> value
+                    DbIntKey::class -> value
                     Date::class -> value
                     LocalDate::class -> value
                     else -> {
@@ -389,6 +408,8 @@ fun KType.toSqlType(db: DbBase, annotations: KAnnotatedElement): String {
             //if (maxLength != null) "VARCHAR(${maxLength.length})" else "TEXT"
             if (maxLength != null) "VARCHAR(${maxLength.length})" else "VARCHAR"
         }
+        DbIntRef::class, DbIntKey::class -> "INTEGER"
+        DbRef::class, DbKey::class -> "VARCHAR"
         else -> "VARCHAR"
     }
 }

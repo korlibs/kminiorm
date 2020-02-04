@@ -4,7 +4,11 @@ import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.flow.*
 import kotlin.reflect.*
 
-interface DbModel {
+interface DbBaseModel {
+
+}
+
+interface DbModel : DbBaseModel {
     companion object { }
     @DbPrimary
     val _id: DbKey
@@ -13,16 +17,27 @@ interface DbModel {
     open class BaseWithExtrinsic<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : DbModel, ExtrinsicData by ExtrinsicData.Mixin()
 }
 
+interface DbIntModel : DbModel {
+    @DbPrimary
+    val id: DbIntKey
+}
+
 typealias DbTableElement = DbModel
 //typealias DbTableElement = Any
+typealias DbTableIntElement = DbIntModel
 
-suspend fun <T : DbTableElement> Iterable<DbRef<T>>.resolved(table: DbTable<T>): Iterable<T?> {
-    return this.map { it.resolved(table) }
-}
+suspend fun <T : DbTableElement> Iterable<DbRef<T>>.resolved(table: DbTable<T>): Iterable<T?> = this.map { it.resolved(table) }
+suspend fun <T : DbTableElement> DbRef<T>.resolved(table: DbTable<T>): T? = table.findById(this)
+suspend inline fun <reified T : DbTableElement> DbRef<T>.resolved(db: Db): T? = resolved(db.table(T::class, initialize = false))
 
-suspend fun <T : DbTableElement> DbRef<T>.resolved(table: DbTable<T>): T? {
-    return table.findById(this)
-}
+@JvmName("resolvedInt")
+suspend fun <T : DbTableIntElement> Iterable<DbIntRef<T>>.resolved(table: DbTable<T>): Iterable<T?> = this.map { it.resolved(table) }
+@JvmName("resolvedInt")
+suspend fun <T : DbTableIntElement> DbIntRef<T>.resolved(table: DbTable<T>): T? =
+    table.findOne { DbQuery.BinOp(DbTableIntElement::id as KProperty1<T, DbIntKey>, this@resolved, DbQueryBinOp.EQ) }
+
+@JvmName("resolvedInt")
+suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(db: Db): T? = resolved(db.table(T::class, initialize = false))
 
 //interface DbTable<T : Any> {
 interface DbTable<T : DbTableElement> {

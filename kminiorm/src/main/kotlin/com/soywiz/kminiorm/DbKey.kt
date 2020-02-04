@@ -16,7 +16,20 @@ class DbRef<T : DbTableElement> : DbKey {
     internal constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) : super(timestamp, randomValue1, randomValue2, counter, checkCounter)
 }
 
-open class DbKey : Comparable<DbKey>, Serializable {
+class DbIntRef<T : DbTableElement>(key: Long = 0L) : DbIntKey(key) {
+    constructor(key: Int) : this(key.toLong())
+}
+
+interface DbBaseKey
+
+open class DbIntKey(val key: Long = 0L) : Comparable<DbIntKey>, Serializable, DbBaseKey {
+    fun <T : DbTableElement> asRef() = DbIntRef<T>(key)
+
+    override fun compareTo(other: DbIntKey): Int = this.key.compareTo(other.key)
+    override fun toString(): String = "$key"
+}
+
+open class DbKey : Comparable<DbKey>, Serializable, DbBaseKey {
     fun <T : DbTableElement> asRef() = DbRef<T>(timestamp, machineIdentifier, processIdentifier, counter, false)
 
     internal constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) {
@@ -223,5 +236,34 @@ fun Typer.withDbKeyTyperUntyper(): Typer = this
         },
         untyper = {
             it.toHexString()
+        }
+    )
+    .withTyperUntyper<DbIntRef<DbTableElement>>(
+        typer = { it, type ->
+            when (it) {
+                is DbIntRef<*> -> it as DbIntRef<DbTableElement>
+                is DbIntKey -> it.asRef()
+                is String -> DbIntRef(it.toLong())
+                is Long -> DbIntRef(it.toLong())
+                is Number -> DbIntRef(it.toLong())
+                else -> DbIntRef()
+            }
+        },
+        untyper = {
+            it.key
+        }
+    )
+    .withTyperUntyper<DbIntKey>(
+        typer = { it, type ->
+            when (it) {
+                is DbIntKey -> it
+                is String -> DbIntKey(it.toLong())
+                is Long -> DbIntKey(it.toLong())
+                is Number -> DbIntKey(it.toLong())
+                else -> DbIntKey()
+            }
+        },
+        untyper = {
+            it.key
         }
     )
