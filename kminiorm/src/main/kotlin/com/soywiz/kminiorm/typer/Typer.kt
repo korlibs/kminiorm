@@ -3,6 +3,11 @@ package com.soywiz.kminiorm.typer
 import com.soywiz.kminiorm.*
 import com.soywiz.kminiorm.internal.*
 import java.math.*
+import java.time.*
+import java.util.*
+import kotlin.collections.ArrayList
+import kotlin.collections.HashMap
+import kotlin.collections.LinkedHashMap
 import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
@@ -30,7 +35,7 @@ open class Typer private constructor(
     inline fun <reified T : Any> withUntyper(noinline handler: Typer.(T) -> Any) = withUntyper(T::class, handler)
     inline fun <reified T : Any> withTyper(noinline handler: Typer.(Any, KType) -> T) = withTyper(T::class, handler)
 
-    inline fun <reified T : Any> withTyperUntyper(noinline typer: Typer.(Any, KType) -> T, noinline untyper: Typer.(T) -> Any) = withTyper(T::class, typer).withUntyper(T::class, untyper)
+    inline fun <reified T : Any> withTyperUntyper(noinline typer: Typer.(Any, KType) -> T, noinline untyper: Typer.(T) -> Any = { it }) = withTyper(T::class, typer).withUntyper(T::class, untyper)
 
     fun untype(instance: Any): Any {
         val clazz = instance::class
@@ -66,12 +71,14 @@ open class Typer private constructor(
 
     fun <T> type(instance: Any, targetType: KType): T = _type(instance, targetType) as T
 
-    private fun _toIterable(instance: Any): Iterable<Any?> {
+    private fun _toIterable(instance: Any?): Iterable<Any?> {
+        if (instance == null) return listOf()
         if (instance is Iterable<*>) return instance as Iterable<Any?>
         TODO()
     }
 
-    private fun _toMap(instance: Any): Map<Any?, Any?> {
+    private fun _toMap(instance: Any?): Map<Any?, Any?> {
+        if (instance == null) return LinkedHashMap()
         if (instance is Map<*, *>) return instance as Map<Any?, Any?>
         if (instance is Iterable<*>) return (instance as Iterable<Map.Entry<Any?, Any?>>).toList().associate { it.key to it.value }
         return instance::class.memberProperties
@@ -80,15 +87,18 @@ open class Typer private constructor(
             .associate { it.name to (it as KProperty1<Any?, Any?>).get(instance) }
     }
 
-    private fun _type(instance: Any, targetType: KType): Any? {
+    private fun _type(instance: Any?, targetType: KType): Any? {
+        if (targetType.isMarkedNullable && instance == null) return null
         val targetClass = targetType.jvmErasure
         val targetClassJava = targetClass.java
 
         val typer = typersByClass[targetClass]
-        if (typer != null) return typer(instance, targetType)
+        if (typer != null && instance != null) return typer(instance, targetType)
+
+        val instanceClass = if (instance != null) instance::class else null
 
         return when (targetClass) {
-            instance::class -> instance
+            instanceClass -> instance
             Boolean::class -> when (instance) {
                 is Boolean -> instance
                 is Number -> instance.toDouble() != 0.0
@@ -110,13 +120,13 @@ open class Typer private constructor(
             Any::class -> instance
             else -> when {
                 targetClass.isSubclassOf(Number::class) -> when (targetClass) {
-                    Byte::class -> (instance as? Number)?.toByte() ?: instance.toString().toInt().toByte()
-                    Short::class -> (instance as? Number)?.toShort() ?: instance.toString().toInt().toShort()
-                    Char::class -> (instance as? Number)?.toChar() ?: instance.toString().toInt().toChar()
-                    Int::class -> (instance as? Number)?.toInt() ?: instance.toString().toInt()
-                    Long::class -> (instance as? Number)?.toLong() ?: instance.toString().toLong()
-                    Float::class -> (instance as? Number)?.toFloat() ?: instance.toString().toFloat()
-                    Double::class -> (instance as? Number)?.toDouble() ?: instance.toString().toDouble()
+                    Byte::class -> (instance as? Number)?.toByte() ?: instance.toString().toIntOrNull()?.toByte() ?: 0.toByte()
+                    Short::class -> (instance as? Number)?.toShort() ?: instance.toString().toIntOrNull()?.toShort() ?: 0.toShort()
+                    Char::class -> (instance as? Number)?.toChar() ?: instance.toString().toIntOrNull()?.toChar() ?: 0.toChar()
+                    Int::class -> (instance as? Number)?.toInt() ?: instance.toString().toIntOrNull() ?: 0
+                    Long::class -> (instance as? Number)?.toLong() ?: instance.toString().toLongOrNull() ?: 0L
+                    Float::class -> (instance as? Number)?.toFloat() ?: instance.toString().toFloatOrNull() ?: 0f
+                    Double::class -> (instance as? Number)?.toDouble() ?: instance.toString().toDoubleOrNull() ?: 0.0
                     BigInteger::class -> (instance as? BigInteger) ?: instance.toString().toBigInteger()
                     BigDecimal::class -> (instance as? BigDecimal) ?: instance.toString().toBigDecimal()
                     else -> TODO()
@@ -203,6 +213,8 @@ open class Typer private constructor(
             DbKey::class -> DbKey(ByteArray(12))
             DbIntRef::class -> DbIntRef<DbTableElement>()
             DbIntKey::class -> DbIntKey(0L)
+            Date::class -> Date(0L)
+            LocalDate::class -> LocalDate.MIN
             else -> {
                 if (jclazz.isEnum) {
                     jclazz.enumConstants.first()
