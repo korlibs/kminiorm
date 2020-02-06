@@ -9,13 +9,21 @@ import kotlin.reflect.jvm.*
 
 interface Db {
     suspend fun <T : DbTableElement> table(clazz: KClass<T>, initialize: Boolean = true): DbTable<T>
+    fun <T : DbTableElement> uninitializedTable(clazz: KClass<T>): DbTable<T>
     companion object
 }
 
 abstract class AbstractDb : Db {
     private val cachedTables = java.util.LinkedHashMap<KClass<*>, DbTable<*>>()
-    override suspend fun <T : DbTableElement> table(clazz: KClass<T>, initialize: Boolean): DbTable<T> = cachedTables.getOrPut(clazz) { constructTable(clazz).also { if (initialize) it.initialize() } } as DbTable<T>
-
+    private val uninitializedCachedTables = java.util.LinkedHashMap<KClass<*>, DbTable<*>>()
+    override suspend fun <T : DbTableElement> table(clazz: KClass<T>, initialize: Boolean): DbTable<T> {
+        return if (initialize) {
+            cachedTables.getOrPut(clazz) { uninitializedTable(clazz).also { if (initialize) it.initialize() } } as DbTable<T>
+        } else {
+            uninitializedTable(clazz)
+        }
+    }
+    override fun <T : DbTableElement> uninitializedTable(clazz: KClass<T>): DbTable<T> = uninitializedCachedTables.getOrPut(clazz) { constructTable(clazz) } as DbTable<T>
     protected abstract fun <T : DbTableElement> constructTable(clazz: KClass<T>): DbTable<T>
 }
 
@@ -23,6 +31,8 @@ val __extrinsicUnquoted__ = "__extrinsic__"
 val __extrinsic__ = "\"$__extrinsicUnquoted__\""
 
 suspend inline fun <reified T : DbTableElement> Db.table(): DbTable<T> = table(T::class)
+inline fun <reified T : DbTableElement> Db.uninitializedTable(): DbTable<T> = uninitializedTable(T::class)
+
 fun <T : DbTableElement> Db.tableBlocking(clazz: KClass<T>) = runBlocking { table(clazz) }
 inline fun <reified T : DbTableElement> Db.tableBlocking() = tableBlocking(T::class)
 

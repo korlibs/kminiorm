@@ -13,13 +13,30 @@ interface DbModel : DbBaseModel {
     @DbPrimary
     val _id: DbKey
 
-    open class Base<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : DbModel
-    open class BaseWithExtrinsic<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : DbModel, ExtrinsicData by ExtrinsicData.Mixin()
+    //var _db: Db? set(_) = Unit; get() = null
+
+    abstract class Abstract : DbModel {
+        //override var _db: Db? = null
+        //suspend inline fun <reified T : DbTableElement> DbRef<T>.resolved(): T? = resolved(_db!!.uninitializedTable(T::class))
+        //suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(): T? = resolved(_db!!)
+    }
+
+    open class Base<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : Abstract()
+    open class BaseWithExtrinsic<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : Abstract(), ExtrinsicData by ExtrinsicData.Mixin()
 }
 
 interface DbIntModel : DbModel {
     @DbPrimary
     val id: DbIntKey
+
+    abstract class Base<T : DbTableElement>(
+        override val id: DbIntRef<T> = DbIntRef(),
+        override val _id: DbRef<T> = DbRef()
+    ) : DbModel.Abstract(), DbIntModel
+    abstract class BaseWithExtrinsic<T : DbTableElement>(
+        override val id: DbIntRef<T> = DbIntRef(),
+        override val _id: DbRef<T> = DbRef()
+    ) : DbModel.Abstract(), ExtrinsicData by ExtrinsicData.Mixin(), DbIntModel
 }
 
 typealias DbTableElement = DbModel
@@ -28,7 +45,7 @@ typealias DbTableIntElement = DbIntModel
 
 suspend fun <T : DbTableElement> Iterable<DbRef<T>>.resolved(table: DbTable<T>): Iterable<T?> = this.map { it.resolved(table) }
 suspend fun <T : DbTableElement> DbRef<T>.resolved(table: DbTable<T>): T? = table.findById(this)
-suspend inline fun <reified T : DbTableElement> DbRef<T>.resolved(db: Db): T? = resolved(db.table(T::class, initialize = false))
+suspend inline fun <reified T : DbTableElement> DbRef<T>.resolved(db: Db): T? = resolved(db.uninitializedTable(T::class))
 
 @JvmName("resolvedInt")
 suspend fun <T : DbTableIntElement> Iterable<DbIntRef<T>>.resolved(table: DbTable<T>): Iterable<T?> = this.map { it.resolved(table) }
@@ -37,10 +54,11 @@ suspend fun <T : DbTableIntElement> DbIntRef<T>.resolved(table: DbTable<T>): T? 
     table.findOne { DbQuery.BinOp(DbTableIntElement::id as KProperty1<T, DbIntKey>, this@resolved, DbQueryBinOp.EQ) }
 
 @JvmName("resolvedInt")
-suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(db: Db): T? = resolved(db.table(T::class, initialize = false))
+suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(db: Db): T? = resolved(db.uninitializedTable(T::class))
 
 //interface DbTable<T : Any> {
 interface DbTable<T : DbTableElement> {
+    val db: Db
     val clazz: KClass<T>
     val typer: Typer
 
@@ -52,7 +70,10 @@ interface DbTable<T : DbTableElement> {
     suspend fun insert(data: Map<String, Any?>): DbResult
     // R
     suspend fun findFlowPartial(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<Partial<T>>
-    suspend fun findFlow(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<T> = findFlowPartial(skip, limit, fields, sorted, query).map { typer.type(it.data, clazz) }
+    suspend fun findFlow(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<T> = findFlowPartial(skip, limit, fields, sorted, query).map {
+        typer.type(it.data, clazz)
+            //.also { row -> row._db = db }
+    }
     suspend fun find(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): List<T> = findFlow(skip, limit, fields, sorted, query).toList()
     suspend fun findAll(skip: Long? = null, limit: Long? = null): List<T> = find(skip = skip, limit = limit)
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query = query, limit = 1).firstOrNull()

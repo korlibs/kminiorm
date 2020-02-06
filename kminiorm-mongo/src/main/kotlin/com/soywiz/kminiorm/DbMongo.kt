@@ -37,7 +37,7 @@ class DbMongo private constructor(val mongoClient: MongoClient, val client: Mong
     override fun <T : DbTableElement> constructTable(clazz: KClass<T>): DbTable<T> = DbTableMongo(this, clazz)
 }
 
-class DbTableMongo<T : DbTableElement>(val db: DbMongo, override val clazz: KClass<T>) : DbTable<T> {
+class DbTableMongo<T : DbTableElement>(override val db: DbMongo, override val clazz: KClass<T>) : DbTable<T> {
     override val typer get() = db.typer
     val ormTableInfo by lazy { OrmTableInfo(clazz) }
     val collection get() = ormTableInfo.tableName

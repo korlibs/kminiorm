@@ -139,8 +139,8 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
         if (DEBUG_JDBC) println("QUERY: $sql, ${params.toList()}")
-        //return withContext(db.dispatcher) {
-        return run {
+        return withContext(db.dispatcher) {
+        //return run {
             val statement = connection.prepareStatement(sql)
             for (index in params.indices) {
                 val param = params[index]
