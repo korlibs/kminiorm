@@ -77,6 +77,7 @@ interface DbTable<T : DbTableElement> {
     suspend fun find(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): List<T> = findFlow(skip, limit, fields, sorted, query).toList()
     suspend fun findAll(skip: Long? = null, limit: Long? = null): List<T> = find(skip = skip, limit = limit)
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query = query, limit = 1).firstOrNull()
+    suspend fun count(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Long = this.find(query = query).size.toLong()
     // U
     suspend fun update(set: Partial<T>? = null, increment: Partial<T>? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long
     suspend fun upsert(instance: T): T {

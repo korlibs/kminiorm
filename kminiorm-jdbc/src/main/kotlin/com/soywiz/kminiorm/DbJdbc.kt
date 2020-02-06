@@ -273,6 +273,20 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
         return data.asFlow()
     }
 
+    override suspend fun count(query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+        val data = query(buildString {
+            append("SELECT ")
+            append("COUNT(*)")
+            append(" FROM ")
+            append(_quotedTableName)
+            append(" WHERE ")
+            append(DbQueryBuilder.build(query).toString(_db))
+            append(";")
+        })
+        // @TODO: Can we optimize this by streaming results?
+        return data.first().values.first().toString().toLong()
+    }
+
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
         val table = this.table
         val setEntries = (set?.let { table.toColumnMap(it.data).entries } ?: setOf()).toList()
