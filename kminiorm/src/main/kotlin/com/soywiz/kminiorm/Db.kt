@@ -44,7 +44,7 @@ fun ResultSet.toListMap(): List<Map<String, Any?>> {
     while (this.next()) {
         val row = LinkedHashMap<String, Any?>()
         for (column in 1..metaData.columnCount) {
-            row[metaData.getColumnName(column)] = this.getObject(column)
+            row[metaData.getColumnLabel(column)] = this.getObject(column)
         }
         out.add(row.fixRow())
     }
