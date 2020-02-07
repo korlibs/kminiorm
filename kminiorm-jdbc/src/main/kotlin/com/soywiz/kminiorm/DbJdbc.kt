@@ -66,6 +66,7 @@ open class SqlDialect() : DbQuoteable {
         null -> "NULL"
         is Int, is Long, is Float, is Double, is Number -> "$value"
         is String -> quoteString(value)
+        is Date -> quoteString(java.sql.Date(value.time).toString())
         else -> quoteString("$value")
     }
 
