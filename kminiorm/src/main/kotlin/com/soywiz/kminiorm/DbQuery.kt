@@ -28,17 +28,19 @@ abstract class DbQuery<T> {
 }
 
 open class DbQueryBuilder<T> {
+    val NEVER by lazy { DbQuery.Never<T>() }
     companion object : DbQueryBuilder<Any>() {
         fun <T> builder() = DbQueryBuilder as DbQueryBuilder<T>
         fun <T> build(query: DbQueryBuilder<T>.() -> DbQuery<T>) = query(builder())
+        fun <T> buildOrNull(query: DbQueryBuilder<T>.() -> DbQuery<T>) = build(query).takeIf { (it !is DbQuery.Never<*>) }
     }
 
     fun id(id: DbKey) = DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ)
     fun raw(map: Map<String, Any?>) = DbQuery.Raw<T>(map)
-    infix fun DbQuery<T>.AND(that: DbQuery<T>) = DbQuery.BinOpNode(this, DbQueryBinOp.AND, that)
+    infix fun DbQuery<T>.AND(that: DbQuery<T>) = if (this is DbQuery.Never<*> || that is DbQuery.Never<*>) NEVER else DbQuery.BinOpNode(this, DbQueryBinOp.AND, that)
     infix fun DbQuery<T>.OR(that: DbQuery<T>) = DbQuery.BinOpNode(this, DbQueryBinOp.OR, that)
     fun NOT(q: DbQuery<T>) = DbQuery.UnOpNode(DbQueryUnOp.NOT, q)
-    infix fun <R : Any?> KProperty1<@Exact T, @Exact R>.IN(literal: List<R>) = DbQuery.IN(this, literal)
+    infix fun <R : Any?> KProperty1<@Exact T, @Exact R>.IN(literals: List<R>) = if (literals.isNotEmpty()) DbQuery.IN(this, literals) else NEVER
     infix fun <R : Any?> KProperty1<@Exact T, @Exact R>.LIKE(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.LIKE)
     infix fun <R : Any?> KProperty1<@Exact T, @Exact R>.eq(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.EQ)
     infix fun <T : Any?> KProperty1<@Exact T, DbKey>.eq(literal: DbModel) = DbQuery.BinOp(this, literal._id, DbQueryBinOp.EQ)

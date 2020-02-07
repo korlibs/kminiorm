@@ -46,12 +46,19 @@ fun <T> DbQuery<T>.toString(db: DbQuoteable): String = when (this) {
     is DbQuery.Never<*> -> "1=0"
     is DbQuery.BinOpNode<*> -> "((${left.toString(db)}) ${op.toSqlString()} (${right.toString(db)}))"
     is DbQuery.UnOpNode<*> -> "(${op.toSqlString()} (${right.toString(db)}))"
-    is DbQuery.IN<*, *> -> "${db.quoteTableName(prop.name)} IN (${literal.joinToString(", ") { db.quoteLiteral(it) }})"
+    is DbQuery.IN<*, *> -> {
+        if (literal.isNotEmpty()) {
+            "${db.quoteTableName(prop.name)} IN (${literal.joinToString(", ") { db.quoteLiteral(it) }})"
+        } else {
+            "1=0"
+        }
+    }
     is DbQuery.Raw<*> -> TODO()
     else -> TODO()
 }
 
 interface DbBase : Db, DbQueryable, DbQuoteable {
+    val debugSQL: Boolean get() = false
     val dispatcher: CoroutineContext
     suspend fun <T> transaction(callback: suspend DbTransaction.() -> T): T
 }
@@ -96,6 +103,7 @@ class JdbcDb(
     val user: String, val pass: String,
     override val dispatcher: CoroutineContext = Dispatchers.IO,
     val typer: Typer = JdbcDbTyper,
+    override val debugSQL: Boolean = false,
     val dialect: SqlDialect = SqlDialect.ANSI
 ) : AbstractDb(), DbBase, DbQuoteable by dialect {
     override fun <T : DbTableElement> constructTable(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz)
@@ -139,7 +147,7 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
     }
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
-        if (DEBUG_JDBC) println("QUERY: $sql, ${params.toList()}")
+        if (DEBUG_JDBC || db.debugSQL) println("QUERY: $sql, ${params.toList()}")
         return withContext(db.dispatcher) {
         //return run {
             val statement = connection.prepareStatement(sql)
@@ -249,6 +257,7 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
     }
 
     override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Flow<Partial<T>> {
+        val rquery = DbQueryBuilder.buildOrNull(query) ?: return listOf<Partial<T>>().asFlow()
         val data = query(buildString {
             append("SELECT ")
             if (fields != null) {
@@ -259,7 +268,7 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
             append(" FROM ")
             append(_quotedTableName)
             append(" WHERE ")
-            append(DbQueryBuilder.build(query).toString(_db))
+            append(rquery.toString(_db))
             if (sorted != null && sorted.isNotEmpty()) {
                 val orders = sorted.map { table.getColumnByProp(it.first)!!.quotedName + when { it.second > 0 -> " ASC"; it.second < 0 -> " DESC"; else -> "" } }
                 append(" ORDER BY ${orders.joinToString(", ")}")
@@ -275,13 +284,14 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
     }
 
     override suspend fun count(query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+        val rquery = DbQueryBuilder.buildOrNull(query) ?: return 0L
         val data = query(buildString {
             append("SELECT ")
             append("COUNT(*)")
             append(" FROM ")
             append(_quotedTableName)
             append(" WHERE ")
-            append(DbQueryBuilder.build(query).toString(_db))
+            append(rquery.toString(_db))
             append(";")
         })
         // @TODO: Can we optimize this by streaming results?
