@@ -72,6 +72,7 @@ open class SqlDialect() : DbQuoteable {
     override fun quoteLiteral(value: Any?) = when (value) {
         null -> "NULL"
         is Int, is Long, is Float, is Double, is Number -> "$value"
+        is DbIntKey -> "${value.key}"
         is String -> quoteString(value)
         is Date -> quoteString(java.sql.Date(value.time).toString())
         else -> quoteString("$value")

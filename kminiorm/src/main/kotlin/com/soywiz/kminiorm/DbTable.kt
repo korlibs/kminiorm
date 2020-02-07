@@ -48,7 +48,9 @@ suspend fun <T : DbTableElement> DbRef<T>.resolved(table: DbTable<T>): T? = tabl
 suspend inline fun <reified T : DbTableElement> DbRef<T>.resolved(db: Db): T? = resolved(db.uninitializedTable(T::class))
 
 @JvmName("resolvedInt")
-suspend fun <T : DbTableIntElement> Iterable<DbIntRef<T>>.resolved(table: DbTable<T>): Iterable<T?> = this.map { it.resolved(table) }
+suspend fun <T : DbTableIntElement> Iterable<DbIntRef<T>>.resolved(table: DbTable<T>): Iterable<T?> =
+    //this.map { it.resolved(table) }
+    table.find { DbQuery.IN<T, DbIntRef<*>>(DbTableIntElement::id as KProperty1<T, DbIntRef<*>>, this@resolved.toList()) }
 @JvmName("resolvedInt")
 suspend fun <T : DbTableIntElement> DbIntRef<T>.resolved(table: DbTable<T>): T? =
     table.findOne { DbQuery.BinOp(DbTableIntElement::id as KProperty1<T, DbIntKey>, this@resolved, DbQueryBinOp.EQ) }
