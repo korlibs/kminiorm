@@ -80,6 +80,8 @@ interface DbTable<T : DbTableElement> {
     suspend fun findAll(skip: Long? = null, limit: Long? = null): List<T> = find(skip = skip, limit = limit)
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query = query, limit = 1).firstOrNull()
     suspend fun count(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Long = this.find(query = query).size.toLong()
+    suspend fun <R> countGrouped(groupedBy: KProperty1<T, R>, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Map<R, Long> =
+        this.find(query = query).groupBy { groupedBy.get(it) }.map { it.key to it.value.size.toLong()}.toMap()
     // U
     suspend fun update(set: Partial<T>? = null, increment: Partial<T>? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long
     suspend fun upsert(instance: T): T {

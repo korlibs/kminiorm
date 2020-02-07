@@ -14,6 +14,7 @@ import kotlin.coroutines.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
+import kotlin.time.*
 
 //val DEBUG_JDBC = true
 val DEBUG_JDBC = false
@@ -147,26 +148,32 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
         }
     }
 
+    @UseExperimental(ExperimentalTime::class)
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
-        if (DEBUG_JDBC || db.debugSQL) println("QUERY: $sql, ${params.toList()}")
-        return withContext(db.dispatcher) {
-        //return run {
-            val statement = connection.prepareStatement(sql)
-            for (index in params.indices) {
-                val param = params[index]
-                if (param is ByteArray) {
-                    statement.setBlob(index + 1, param.inputStream())
-                } else {
-                    statement.setObject(index + 1, param)
+        val startTime = MonoClock.markNow()
+        try {
+            return withContext(db.dispatcher) {
+                //return run {
+                val statement = connection.prepareStatement(sql)
+                for (index in params.indices) {
+                    val param = params[index]
+                    if (param is ByteArray) {
+                        statement.setBlob(index + 1, param.inputStream())
+                    } else {
+                        statement.setObject(index + 1, param)
+                    }
+                }
+                val resultSet: ResultSet? = when {
+                    sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
+                    else -> null.also { statement.executeUpdate() }
+                }
+                JdbcDbResult(resultSet, statement).also { result ->
+                    if (DEBUG_JDBC) println(" --> $result")
                 }
             }
-            val resultSet: ResultSet? = when {
-                sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
-                else -> null.also { statement.executeUpdate() }
-            }
-            JdbcDbResult(resultSet, statement).also { result ->
-                if (DEBUG_JDBC) println(" --> $result")
-            }
+        } finally {
+            val time = startTime.elapsedNow()
+            if (DEBUG_JDBC || db.debugSQL) println("QUERY[$time] : $sql, ${params.toList()}")
         }
     }
 }
@@ -297,6 +304,30 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
         })
         // @TODO: Can we optimize this by streaming results?
         return data.first().values.first().toString().toLong()
+    }
+
+    override suspend fun <R> countGrouped(groupedBy: KProperty1<T, R>, query: DbQueryBuilder<T>.() -> DbQuery<T>): Map<R, Long> {
+        val rquery = DbQueryBuilder.buildOrNull(query) ?: return mapOf()
+        val keyAlias = "__k1"
+        val countAlias = "__c1"
+        val groupedByCol = table.getColumnByProp(groupedBy) ?: error("Can't find column '$groupedBy'")
+        val groupColumnQuotedName = groupedByCol.quotedName
+        val data = query(buildString {
+            append("SELECT ")
+            append(groupColumnQuotedName)
+            append(" AS $keyAlias, ")
+            append("COUNT(*) AS $countAlias")
+            append(" FROM ")
+            append(_quotedTableName)
+            append(" WHERE ")
+            append(rquery.toString(_db))
+            append(" GROUP BY ")
+            append(groupColumnQuotedName)
+            append(";")
+        })
+        // @TODO: Can we optimize this by streaming results?
+        return data
+            .associate { (table.deserializeColumn(it[keyAlias], groupedByCol, keyAlias) as R) to it[countAlias].toString().toLong() }
     }
 
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
