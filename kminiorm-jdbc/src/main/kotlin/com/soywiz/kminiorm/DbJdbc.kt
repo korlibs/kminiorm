@@ -61,6 +61,7 @@ fun <T> DbQuery<T>.toString(db: DbQuoteable): String = when (this) {
 interface DbBase : Db, DbQueryable, DbQuoteable {
     val debugSQL: Boolean get() = false
     val dispatcher: CoroutineContext
+    val async: Boolean get() = true
     suspend fun <T> transaction(callback: suspend DbTransaction.() -> T): T
 }
 
@@ -106,15 +107,16 @@ class JdbcDb(
     override val dispatcher: CoroutineContext = Dispatchers.IO,
     val typer: Typer = JdbcDbTyper,
     override val debugSQL: Boolean = false,
-    val dialect: SqlDialect = SqlDialect.ANSI
+    val dialect: SqlDialect = SqlDialect.ANSI,
+    override val async: Boolean = true
 ) : AbstractDb(), DbBase, DbQuoteable by dialect {
     override fun <T : DbTableElement> constructTable(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz)
 
+    private fun getConnection() = DriverManager.getConnection(connection, user, pass).also { it.autoCommit = false }
+
     @PublishedApi
     internal val connectionPool = InternalDbPool {
-        withContext(dispatcher) {
-            DriverManager.getConnection(connection, user, pass).also { it.autoCommit = false }
-        }
+        if (async) withContext(dispatcher) { getConnection() } else getConnection()
     }
 
     override suspend fun <R> transaction(callback: suspend DbTransaction.() -> R): R {
@@ -136,15 +138,34 @@ class JdbcDb(
 
 
 class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
-    suspend fun DbBase.commit() {
-        kotlinx.coroutines.withContext(dispatcher) {
-            this@DbTransaction.connection.commit()
-        }
+    suspend fun DbBase.commit() = if (db.async) {
+        withContext(context = dispatcher) { this@DbTransaction.connection.commit() }
+    } else {
+        this@DbTransaction.connection.commit()
     }
 
-    suspend fun DbBase.rollback() {
-        kotlinx.coroutines.withContext(dispatcher) {
-            this@DbTransaction.connection.rollback()
+    suspend fun DbBase.rollback() = if (db.async) {
+        withContext(dispatcher) { this@DbTransaction.connection.rollback() }
+    } else {
+        this@DbTransaction.connection.rollback()
+    }
+
+    private fun _query(sql: String, vararg params: Any?): DbResult {
+        val statement = connection.prepareStatement(sql)
+        for (index in params.indices) {
+            val param = params[index]
+            if (param is ByteArray) {
+                statement.setBlob(index + 1, param.inputStream())
+            } else {
+                statement.setObject(index + 1, param)
+            }
+        }
+        val resultSet: ResultSet? = when {
+            sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
+            else -> null.also { statement.executeUpdate() }
+        }
+        return JdbcDbResult(resultSet, statement).also { result ->
+            if (DEBUG_JDBC) println(" --> $result")
         }
     }
 
@@ -152,25 +173,7 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
         val startTime = MonoClock.markNow()
         try {
-            return withContext(db.dispatcher) {
-                //return run {
-                val statement = connection.prepareStatement(sql)
-                for (index in params.indices) {
-                    val param = params[index]
-                    if (param is ByteArray) {
-                        statement.setBlob(index + 1, param.inputStream())
-                    } else {
-                        statement.setObject(index + 1, param)
-                    }
-                }
-                val resultSet: ResultSet? = when {
-                    sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
-                    else -> null.also { statement.executeUpdate() }
-                }
-                JdbcDbResult(resultSet, statement).also { result ->
-                    if (DEBUG_JDBC) println(" --> $result")
-                }
-            }
+            return if (db.async) withContext(db.dispatcher) { _query(sql, *params) } else _query(sql, *params)
         } finally {
             val time = startTime.elapsedNow()
             if (DEBUG_JDBC || db.debugSQL) println("QUERY[$time] : $sql, ${params.toList()}")
