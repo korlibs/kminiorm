@@ -26,6 +26,9 @@ open class DbIntKey(val key: Long = 0L) : Comparable<DbIntKey>, Serializable, Db
     fun <T : DbTableElement> asRef() = DbIntRef<T>(key)
 
     override fun compareTo(other: DbIntKey): Int = this.key.compareTo(other.key)
+    override fun equals(other: Any?) = (other is DbIntKey) && (this.key == other.key)
+
+    override fun hashCode(): Int = (key ushr 32).toInt() xor (key.toInt())
     override fun toString(): String = "$key"
 }
 
