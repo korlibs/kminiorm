@@ -197,39 +197,54 @@ abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExt
         for (column in table.columns) {
             if (column.name in oldColumns) continue // Do not add columns if they already exists
 
-            query(buildString {
-                append("ALTER TABLE ")
-                append(_quotedTableName)
-                append(" ADD ")
-                append(column.quotedName)
-                append(" ")
-                append(column.sqlType)
-                if (column.isNullable) {
-                    append(" NULLABLE")
-                } else {
-                    append(" NOT NULL")
-                    when {
-                        column.jclazz == String::class -> append(" DEFAULT ('')")
-                        column.jclazz.isSubclassOf(Number::class) -> append(" DEFAULT (0)")
+            val result = kotlin.runCatching {
+                query(buildString {
+                    append("ALTER TABLE ")
+                    append(_quotedTableName)
+                    append(" ADD ")
+                    append(column.quotedName)
+                    append(" ")
+                    append(column.sqlType)
+                    if (column.isNullable) {
+                        append(" NULLABLE")
+                    } else {
+                        append(" NOT NULL")
+                        when {
+                            column.jclazz == String::class -> append(" DEFAULT ('')")
+                            column.jclazz.isSubclassOf(Number::class) -> append(" DEFAULT (0)")
+                        }
                     }
-                }
-                append(";")
-            })
+                    append(";")
+                })
+            }
+            if (result.isFailure) {
+                println(result.exceptionOrNull())
+            }
         }
 
         if (table.hasExtrinsicData) {
-            query("ALTER TABLE $_quotedTableName ADD $__extrinsic__ VARCHAR NOT NULL DEFAULT '{}'")
+            val result = kotlin.runCatching {
+                query("ALTER TABLE $_quotedTableName ADD $__extrinsic__ VARCHAR NOT NULL DEFAULT '{}'")
+            }
+            if (result.isFailure) {
+                println(result.exceptionOrNull())
+            }
         }
 
         for ((indexName, columns) in table.ormTableInfo.columnIndices) {
             //println("$column: ${column.quotedName}: ${column.isUnique}, ${column.isIndex}")
             val unique = columns.any { it.isUnique }
-            query(buildString {
-                append("CREATE ")
-                if (unique) append("UNIQUE ")
-                val packs = columns.map { "${it.quotedName} ${it.indexDirection.sname}" }
-                append("INDEX IF NOT EXISTS ${db.quoteColumnName("${table.tableName}_${indexName}")} ON $_quotedTableName (${packs.joinToString(", ")});")
-            })
+            val result = kotlin.runCatching {
+                query(buildString {
+                    append("CREATE ")
+                    if (unique) append("UNIQUE ")
+                    val packs = columns.map { "${it.quotedName} ${it.indexDirection.sname}" }
+                    append("INDEX IF NOT EXISTS ${db.quoteColumnName("${table.tableName}_${indexName}")} ON $_quotedTableName (${packs.joinToString(", ")});")
+                })
+            }
+            if (result.isFailure) {
+                println(result.exceptionOrNull())
+            }
         }
     }
 
