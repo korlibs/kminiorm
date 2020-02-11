@@ -144,6 +144,26 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     }
 
     @Test
+    fun testUpdate1() = suspendTest {
+        val table = db.table<Update1>()
+        table.delete { everything }
+        table.insert(Update1("a", "b", "c"))
+        for (item in table.findAll()) {
+            table.update(Partial(Update1::latestPublishedVersion to "d")) { Update1::_id eq item._id }
+        }
+        assertEquals("d", table.findAll().first().latestPublishedVersion)
+    }
+
+    data class Update1(
+        @DbUnique("project_channel")
+        val project: String,
+        @DbUnique("project_channel")
+        val channel: String,
+        val latestPublishedVersion: String
+    ) : DbModel.Base<Update1>()
+
+
+    @Test
     fun testArrayOfCustom() = suspendTest {
         val table = db.table<ArrayOfCustom>().apply { delete { everything } }
         val item = table.insert(ArrayOfCustom(listOf()))
