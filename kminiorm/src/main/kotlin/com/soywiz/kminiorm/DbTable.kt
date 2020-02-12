@@ -5,7 +5,11 @@ import kotlinx.coroutines.flow.*
 import kotlin.reflect.*
 
 interface DbBaseModel {
-
+    abstract class Abstract : DbBaseModel {
+        //override var _db: Db? = null
+        //suspend inline fun <reified T : DbTableElement> DbRef<T>.resolved(): T? = resolved(_db!!.uninitializedTable(T::class))
+        //suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(): T? = resolved(_db!!)
+    }
 }
 
 interface DbModel : DbBaseModel {
@@ -15,14 +19,8 @@ interface DbModel : DbBaseModel {
 
     //var _db: Db? set(_) = Unit; get() = null
 
-    abstract class Abstract : DbModel {
-        //override var _db: Db? = null
-        //suspend inline fun <reified T : DbTableElement> DbRef<T>.resolved(): T? = resolved(_db!!.uninitializedTable(T::class))
-        //suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(): T? = resolved(_db!!)
-    }
-
-    open class Base<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : Abstract()
-    open class BaseWithExtrinsic<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : Abstract(), ExtrinsicData by ExtrinsicData.Mixin()
+    open class Base<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : DbBaseModel.Abstract(), DbModel
+    open class BaseWithExtrinsic<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : DbBaseModel.Abstract(), DbModel, ExtrinsicData by ExtrinsicData.Mixin()
 }
 
 interface DbIntModel : DbBaseModel {
@@ -34,11 +32,11 @@ interface DbIntModel : DbBaseModel {
     abstract class Base<T : DbTableIntElement>(
         override val id: DbIntRef<T> = DbIntRef()
         //, override val _id: DbRef<T> = DbRef()
-    ) : DbModel.Abstract(), DbIntModel
+    ) : DbBaseModel.Abstract(), DbIntModel
     abstract class BaseWithExtrinsic<T : DbTableIntElement>(
         override val id: DbIntRef<T> = DbIntRef()
         //,override val _id: DbRef<T> = DbRef()
-    ) : DbModel.Abstract(), ExtrinsicData by ExtrinsicData.Mixin(), DbIntModel
+    ) : DbBaseModel.Abstract(), ExtrinsicData by ExtrinsicData.Mixin(), DbIntModel
 }
 
 typealias DbTableBaseElement = DbBaseModel
