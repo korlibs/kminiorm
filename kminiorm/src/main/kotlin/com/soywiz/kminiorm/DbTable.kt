@@ -9,7 +9,7 @@ interface DbBaseModel {
 }
 
 interface DbModel : DbBaseModel {
-    companion object { }
+    companion object;
     @DbPrimary
     val _id: DbKey
 
@@ -25,22 +25,24 @@ interface DbModel : DbBaseModel {
     open class BaseWithExtrinsic<T : DbTableElement>(override val _id: DbRef<T> = DbRef()) : Abstract(), ExtrinsicData by ExtrinsicData.Mixin()
 }
 
-interface DbIntModel : DbModel {
+interface DbIntModel : DbBaseModel {
+    companion object;
+
     @DbPrimary
     val id: DbIntKey
 
-    abstract class Base<T : DbTableElement>(
-        override val id: DbIntRef<T> = DbIntRef(),
-        override val _id: DbRef<T> = DbRef()
+    abstract class Base<T : DbTableIntElement>(
+        override val id: DbIntRef<T> = DbIntRef()
+        //, override val _id: DbRef<T> = DbRef()
     ) : DbModel.Abstract(), DbIntModel
-    abstract class BaseWithExtrinsic<T : DbTableElement>(
-        override val id: DbIntRef<T> = DbIntRef(),
-        override val _id: DbRef<T> = DbRef()
+    abstract class BaseWithExtrinsic<T : DbTableIntElement>(
+        override val id: DbIntRef<T> = DbIntRef()
+        //,override val _id: DbRef<T> = DbRef()
     ) : DbModel.Abstract(), ExtrinsicData by ExtrinsicData.Mixin(), DbIntModel
 }
 
+typealias DbTableBaseElement = DbBaseModel
 typealias DbTableElement = DbModel
-//typealias DbTableElement = Any
 typealias DbTableIntElement = DbIntModel
 
 suspend fun <T : DbTableElement> Iterable<DbRef<T>>.resolved(table: DbTable<T>): Iterable<T?> = this.map { it.resolved(table) }
@@ -59,7 +61,7 @@ suspend fun <T : DbTableIntElement> DbIntRef<T>.resolved(table: DbTable<T>): T? 
 suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(db: Db): T? = resolved(db.uninitializedTable(T::class))
 
 //interface DbTable<T : Any> {
-interface DbTable<T : DbTableElement> {
+interface DbTable<T : DbTableBaseElement> {
     val db: Db
     val clazz: KClass<T>
     val typer: Typer

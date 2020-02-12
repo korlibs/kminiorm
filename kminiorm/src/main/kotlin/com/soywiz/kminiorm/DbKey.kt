@@ -16,19 +16,19 @@ class DbRef<T : DbTableElement> : DbKey {
     internal constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) : super(timestamp, randomValue1, randomValue2, counter, checkCounter)
 }
 
-class DbIntRef<T : DbTableElement>(key: Long = 0L) : DbIntKey(key) {
+class DbIntRef<T : DbTableIntElement>(key: Long = 0L) : DbIntKey(key) {
     constructor(key: Int) : this(key.toLong())
 }
 
 interface DbBaseKey
 
 open class DbIntKey(val key: Long = 0L) : Comparable<DbIntKey>, Serializable, DbBaseKey {
-    fun <T : DbTableElement> asRef() = DbIntRef<T>(key)
+    fun <T : DbTableIntElement> asRef() = DbIntRef<T>(key)
 
     override fun compareTo(other: DbIntKey): Int = this.key.compareTo(other.key)
     override fun equals(other: Any?) = (other is DbIntKey) && (this.key == other.key)
 
-    override fun hashCode(): Int = (key ushr 32).toInt() xor (key.toInt())
+    override fun hashCode(): Int = ((key ushr 32).toInt() * 7) * (key.toInt())
     override fun toString(): String = "$key"
 }
 
@@ -241,10 +241,10 @@ fun Typer.withDbKeyTyperUntyper(): Typer = this
             it.toHexString()
         }
     )
-    .withTyperUntyper<DbIntRef<DbTableElement>>(
+    .withTyperUntyper<DbIntRef<DbTableIntElement>>(
         typer = { it, type ->
             when (it) {
-                is DbIntRef<*> -> it as DbIntRef<DbTableElement>
+                is DbIntRef<*> -> it as DbIntRef<DbTableIntElement>
                 is DbIntKey -> it.asRef()
                 is String -> DbIntRef(it.toLong())
                 is Long -> DbIntRef(it.toLong())

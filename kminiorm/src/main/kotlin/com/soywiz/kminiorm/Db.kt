@@ -8,23 +8,23 @@ import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
 
 interface Db {
-    suspend fun <T : DbTableElement> table(clazz: KClass<T>, initialize: Boolean = true): DbTable<T>
-    fun <T : DbTableElement> uninitializedTable(clazz: KClass<T>): DbTable<T>
+    suspend fun <T : DbTableBaseElement> table(clazz: KClass<T>, initialize: Boolean = true): DbTable<T>
+    fun <T : DbTableBaseElement> uninitializedTable(clazz: KClass<T>): DbTable<T>
     companion object
 }
 
 abstract class AbstractDb : Db {
     private val cachedTables = java.util.LinkedHashMap<KClass<*>, DbTable<*>>()
     private val uninitializedCachedTables = java.util.LinkedHashMap<KClass<*>, DbTable<*>>()
-    override suspend fun <T : DbTableElement> table(clazz: KClass<T>, initialize: Boolean): DbTable<T> {
+    override suspend fun <T : DbTableBaseElement> table(clazz: KClass<T>, initialize: Boolean): DbTable<T> {
         return if (initialize) {
             cachedTables.getOrPut(clazz) { uninitializedTable(clazz).also { if (initialize) it.initialize() } } as DbTable<T>
         } else {
             uninitializedTable(clazz)
         }
     }
-    override fun <T : DbTableElement> uninitializedTable(clazz: KClass<T>): DbTable<T> = uninitializedCachedTables.getOrPut(clazz) { constructTable(clazz) } as DbTable<T>
-    protected abstract fun <T : DbTableElement> constructTable(clazz: KClass<T>): DbTable<T>
+    override fun <T : DbTableBaseElement> uninitializedTable(clazz: KClass<T>): DbTable<T> = uninitializedCachedTables.getOrPut(clazz) { constructTable(clazz) } as DbTable<T>
+    protected abstract fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T>
 }
 
 val __extrinsicUnquoted__ = "__extrinsic__"

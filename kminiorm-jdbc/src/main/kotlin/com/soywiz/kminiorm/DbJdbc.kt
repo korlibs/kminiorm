@@ -110,7 +110,7 @@ class JdbcDb(
     val dialect: SqlDialect = SqlDialect.ANSI,
     override val async: Boolean = true
 ) : AbstractDb(), DbBase, DbQuoteable by dialect {
-    override fun <T : DbTableElement> constructTable(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz)
+    override fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz)
 
     private fun getConnection() = DriverManager.getConnection(connection, user, pass).also { it.autoCommit = false }
 
@@ -181,7 +181,7 @@ class DbTransaction(val db: DbBase, val connection: Connection) : DbQueryable {
     }
 }
 
-abstract class SqlTable<T : DbTableElement> : DbTable<T>, DbQueryable, ColumnExtra {
+abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, ColumnExtra {
     abstract val table: DbJdbcTable<T>
     override val typer get() = table.db.typer
     private val _db get() = table.db
@@ -386,7 +386,7 @@ interface ColumnExtra {
     val <T : Any> ColumnDef<T>.sqlType get() = property.returnType.toSqlType(db, property)
 }
 
-class DbJdbcTable<T: DbTableElement>(override val db: JdbcDb, override val clazz: KClass<T>) : SqlTable<T>(), ColumnExtra {
+class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val clazz: KClass<T>) : SqlTable<T>(), ColumnExtra {
     val ormTableInfo = OrmTableInfo(clazz)
     val tableName = ormTableInfo.tableName
     val quotedTableName = db.quoteTableName(tableName)
@@ -462,7 +462,7 @@ class DbJdbcTable<T: DbTableElement>(override val db: JdbcDb, override val clazz
     }
 }
 
-class DbTableTransaction<T: DbTableElement>(override val table: DbJdbcTable<T>, val transaction: DbTransaction) : SqlTable<T>() {
+class DbTableTransaction<T: DbTableBaseElement>(override val table: DbJdbcTable<T>, val transaction: DbTransaction) : SqlTable<T>() {
     override val clazz: KClass<T> get() = table.clazz
     override val db get() = table.db
 

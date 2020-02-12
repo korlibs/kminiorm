@@ -211,7 +211,7 @@ open class Typer private constructor(
             Map::class, HashMap::class, MutableMap::class -> mutableMapOf<Any?, Any?>()
             DbRef::class -> DbRef<DbTableElement>(ByteArray(12))
             DbKey::class -> DbKey(ByteArray(12))
-            DbIntRef::class -> DbIntRef<DbTableElement>()
+            DbIntRef::class -> DbIntRef<DbTableIntElement>()
             DbIntKey::class -> DbIntKey(0L)
             Date::class -> Date(0L)
             LocalDate::class -> LocalDate.MIN
