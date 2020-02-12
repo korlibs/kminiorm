@@ -30,11 +30,11 @@ abstract class AbstractDb : Db {
 val __extrinsicUnquoted__ = "__extrinsic__"
 val __extrinsic__ = "\"$__extrinsicUnquoted__\""
 
-suspend inline fun <reified T : DbTableElement> Db.table(): DbTable<T> = table(T::class)
-inline fun <reified T : DbTableElement> Db.uninitializedTable(): DbTable<T> = uninitializedTable(T::class)
+suspend inline fun <reified T : DbTableBaseElement> Db.table(): DbTable<T> = table(T::class)
+inline fun <reified T : DbTableBaseElement> Db.uninitializedTable(): DbTable<T> = uninitializedTable(T::class)
 
-fun <T : DbTableElement> Db.tableBlocking(clazz: KClass<T>) = runBlocking { table(clazz) }
-inline fun <reified T : DbTableElement> Db.tableBlocking() = tableBlocking(T::class)
+fun <T : DbTableBaseElement> Db.tableBlocking(clazz: KClass<T>) = runBlocking { table(clazz) }
+inline fun <reified T : DbTableBaseElement> Db.tableBlocking() = tableBlocking(T::class)
 
 val ResultSet.columnNames get() = (1..metaData.columnCount).map { metaData.getColumnName(it) }
 

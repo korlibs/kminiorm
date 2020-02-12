@@ -7,8 +7,13 @@ import java.security.*
 import java.util.*
 import java.util.concurrent.atomic.*
 
+interface DbTypedRef<T : DbTableBaseElement, R> {
+    val key: R
+}
+
 // From MongoDB DbKey
-class DbRef<T : DbTableElement> : DbKey {
+class DbRef<T : DbTableElement> : DbKey, DbTypedRef<T, DbKey> {
+    override val key get() = this
     @JvmOverloads
     constructor(date: Date = Date()) : super(date)
     constructor(hexString: String) : super(hexString)
@@ -16,11 +21,29 @@ class DbRef<T : DbTableElement> : DbKey {
     internal constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) : super(timestamp, randomValue1, randomValue2, counter, checkCounter)
 }
 
-class DbIntRef<T : DbTableIntElement>(key: Long = 0L) : DbIntKey(key) {
+class DbIntRef<T : DbTableIntElement>(key: Long = 0L) : DbIntKey(key), DbTypedRef<T, Long> {
     constructor(key: Int) : this(key.toLong())
 }
 
+// @TODO: Doesn't include an asRef
+class DbStringRef<T : DbTableBaseElement>(key: String = "") : DbAnyRef<T, String>(key), DbTypedRef<T, String> {
+}
+
+// @TODO: Doesn't include an asRef
+open class DbAnyRef<T : DbTableBaseElement, R : Comparable<R>>(key: R) : DbAnyKey<R>(key), DbTypedRef<T, R> {
+}
+
 interface DbBaseKey
+
+open class DbAnyKey<T : Comparable<T>>(val key: T) : Comparable<DbAnyKey<T>>, Serializable, DbBaseKey {
+    //fun <T : DbTableBaseElement> asRef() = DbIntRef<T>(key)
+
+    override fun compareTo(other: DbAnyKey<T>): Int = this.key.compareTo(other.key)
+    override fun equals(other: Any?) = (other is DbIntKey) && (this.key == other.key)
+
+    override fun hashCode(): Int = key.hashCode()
+    override fun toString(): String = key.toString()
+}
 
 open class DbIntKey(val key: Long = 0L) : Comparable<DbIntKey>, Serializable, DbBaseKey {
     fun <T : DbTableIntElement> asRef() = DbIntRef<T>(key)
@@ -28,8 +51,8 @@ open class DbIntKey(val key: Long = 0L) : Comparable<DbIntKey>, Serializable, Db
     override fun compareTo(other: DbIntKey): Int = this.key.compareTo(other.key)
     override fun equals(other: Any?) = (other is DbIntKey) && (this.key == other.key)
 
-    override fun hashCode(): Int = ((key ushr 32).toInt() * 7) * (key.toInt())
-    override fun toString(): String = "$key"
+    override fun hashCode(): Int = key.hashCode()
+    override fun toString(): String = key.toString()
 }
 
 open class DbKey : Comparable<DbKey>, Serializable, DbBaseKey {
