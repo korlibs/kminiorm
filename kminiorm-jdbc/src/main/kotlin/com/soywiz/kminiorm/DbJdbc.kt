@@ -418,6 +418,7 @@ class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val 
             is String -> value
             is Number -> value
             is UUID -> value
+            is Date -> java.sql.Date(value.time)
             else -> MiniJson.stringify(JsonTyper.untype(value))
         }
         //return value
