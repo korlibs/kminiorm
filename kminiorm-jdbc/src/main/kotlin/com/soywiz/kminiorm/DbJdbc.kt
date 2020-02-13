@@ -4,6 +4,8 @@ import com.soywiz.kminiorm.internal.*
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import org.intellij.lang.annotations.*
 import java.io.*
 import java.sql.*
 import java.text.*
@@ -133,7 +135,7 @@ class JdbcDb(
         }
     }
 
-    override suspend fun query(sql: String, vararg params: Any?) = transaction { query(sql, *params) }
+    override suspend fun query(@Language("SQL") sql: String, vararg params: Any?) = transaction { query(sql, *params) }
 }
 
 
