@@ -24,7 +24,7 @@ val DEBUG_JDBC = false
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
 class JdbcDb(
     val connection: String,
-    val user: String, val pass: String,
+    val user: String? = null, val pass: String? = null,
     override val dispatcher: CoroutineContext = Dispatchers.IO,
     val typer: Typer = JdbcDbTyper,
     override val debugSQL: Boolean = false,

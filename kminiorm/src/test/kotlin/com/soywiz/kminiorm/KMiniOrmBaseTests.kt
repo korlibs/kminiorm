@@ -261,7 +261,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     data class MyIntKey(
         val key: DbIntRef<MyIntKey>
-    ) : DbModel.Base<MyIntKey>()
+    ) : DbIntModel.Base<MyIntKey>()
 
     data class CustomWithEnum(
             val a: Int,
