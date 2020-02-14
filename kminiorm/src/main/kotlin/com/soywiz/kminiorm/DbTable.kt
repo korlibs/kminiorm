@@ -60,6 +60,7 @@ suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(db: Db):
 
 //interface DbTable<T : Any> {
 interface DbTable<T : DbTableBaseElement> {
+    companion object
     val db: Db
     val clazz: KClass<T>
     val typer: Typer
@@ -128,10 +129,8 @@ interface DbTable<T : DbTableBaseElement> {
     suspend fun delete(limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Long
 
     suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R
-    companion object { }
 }
 
 suspend fun <T : DbTableElement> DbTable<T>.findById(id: DbKey): T? = findOne { DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ) }
-suspend fun <T : DbTableElement> DbTable<T>.findOrCreate(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }, build: () -> T): T {
-    return findOne(query) ?: build().also { insert(it) }
-}
+suspend fun <T : DbTableIntElement> DbTable<T>.findByIntId(id: DbIntRef<T>): T? = findOne { DbQuery.BinOp(DbIntModel::id as KProperty1<T, DbIntKey>, id, DbQueryBinOp.EQ) }
+suspend fun <T : DbTableBaseElement> DbTable<T>.findOrCreate(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }, build: () -> T): T = findOne(query) ?: build().also { insert(it) }
