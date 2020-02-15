@@ -143,6 +143,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         //table.update(Partial(mapOf("list" to listOf("000000000000000000000001", "000000000000000000000002")), ArrayOfDbKey::class)) { id(item._id) }
     }
 
+    /*
     @Test
     fun testUpdate1() = suspendTest {
         val table = db.table<Update1>()
@@ -153,6 +154,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         }
         assertEquals("d", table.findAll().first().latestPublishedVersion)
     }
+     */
 
     data class Update1(
         @DbUnique("project_channel")

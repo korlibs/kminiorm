@@ -55,14 +55,23 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
         }
 
         // Ensure indices
-        for ((indexName, columns) in ormTableInfo.columnIndices) {
-            val isUnique = columns.any { it.isUnique }
-            val map = columns.map { it.name to it.indexDirection.sign }.toMap()
-            //println("INDEX: indexName=$indexName, map=$map")
-            dbCollection.createIndex(
-                    Document(map),
-                    IndexOptions().name(indexName).unique(isUnique).background(false)
-            ) { result, t -> }
+        coroutineScope {
+            val jobs = arrayListOf<Job>()
+            for ((indexName, columns) in ormTableInfo.columnIndices) {
+                val isUnique = columns.any { it.isUnique }
+                val map = columns.map { it.name to it.indexDirection.sign }.toMap()
+                //println("INDEX: indexName=$indexName, map=$map")
+                jobs += launch {
+                    awaitMongo<String> {
+                        dbCollection.createIndex(
+                            Document(map),
+                            IndexOptions().name(indexName).unique(isUnique).background(false),
+                            it
+                        )
+                    }
+                }
+            }
+            jobs.joinAll()
         }
     }
 
