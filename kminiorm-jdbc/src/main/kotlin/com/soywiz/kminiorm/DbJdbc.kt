@@ -10,6 +10,7 @@ import java.io.*
 import java.sql.*
 import java.text.*
 import java.time.*
+import java.time.Duration
 import java.util.*
 import java.util.Date
 import kotlin.coroutines.*
@@ -21,6 +22,26 @@ import kotlin.time.*
 //val DEBUG_JDBC = true
 val DEBUG_JDBC = false
 
+class WrappedConnection(val connectionStr: String, val user: String?, val pass: String?, val timeout: Duration) {
+    private var lastUsedTimestamp = 0L
+    private var _connection: Connection? = null
+    fun clear() = run {
+        kotlin.runCatching { _connection?.close() }
+        _connection = null
+    }
+    val connection: Connection get() = run {
+        val now = System.currentTimeMillis()
+        if (now >= lastUsedTimestamp + timeout.toMillis()) {
+            clear()
+        }
+        if (_connection == null) {
+            _connection = DriverManager.getConnection(connectionStr, user, pass).also { it.autoCommit = false }
+        }
+        lastUsedTimestamp = now
+        _connection!!
+    }
+}
+
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
 class JdbcDb(
     val connection: String,
@@ -29,11 +50,13 @@ class JdbcDb(
     val typer: Typer = JdbcDbTyper,
     override val debugSQL: Boolean = false,
     val dialect: SqlDialect = SqlDialect.ANSI,
-    override val async: Boolean = true
+    override val async: Boolean = true,
+    // MySQL default timeout is 8 hours
+    val connectionTimeout: Duration = Duration.ofHours(1L) // Reuse this connection during 1 hour, then reconnect
 ) : AbstractDb(), DbBase, DbQuoteable by dialect {
     override fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz)
 
-    private fun getConnection() = DriverManager.getConnection(connection, user, pass).also { it.autoCommit = false }
+    private fun getConnection(): WrappedConnection = WrappedConnection(connection, user, pass, connectionTimeout)
 
     @PublishedApi
     internal val connectionPool = InternalDbPool {
@@ -42,14 +65,22 @@ class JdbcDb(
 
     override suspend fun <R> transaction(callback: suspend DbBaseTransaction.() -> R): R {
         return connectionPool.take {
-            val tr = DbTransaction(this, it)
-            tr.run {
-                try {
-                    callback(tr).also { this@JdbcDb.commit() }
-                } catch (e: Throwable) {
-                    this@JdbcDb.rollback()
-                    throw e
+            try {
+                val tr = DbTransaction(this, it)
+                tr.run {
+                    try {
+                        callback(tr).also { this@JdbcDb.commit() }
+                    } catch (e: Throwable) {
+                        this@JdbcDb.rollback()
+                        throw e
+                    }
                 }
+            } catch (e: SQLNonTransientConnectionException) {
+                // Even by reconnecting after timeout, we got an error here. So let's close the connection.
+                it.clear()
+                // Just in case something is wrong, let's wait 3 seconds before continuing to avoid spamming
+                delay(3_000L)
+                throw e
             }
         }
     }
@@ -58,7 +89,9 @@ class JdbcDb(
 }
 
 
-class DbTransaction(override val db: DbBase, val connection: Connection) : DbBaseTransaction {
+class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConnection) : DbBaseTransaction {
+    val connection get() = wrappedConnection.connection
+
     override suspend fun DbBase.commit(): Unit = if (db.async) {
         withContext(context = dispatcher) { this@DbTransaction.connection.commit() }
     } else {
