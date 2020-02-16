@@ -13,6 +13,7 @@ import java.time.*
 import java.time.Duration
 import java.util.*
 import java.util.Date
+import java.util.concurrent.atomic.*
 import kotlin.coroutines.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
@@ -22,7 +23,7 @@ import kotlin.time.*
 //val DEBUG_JDBC = true
 val DEBUG_JDBC = false
 
-class WrappedConnection(val connectionStr: String, val user: String?, val pass: String?, val timeout: Duration) {
+class WrappedConnection(val connectionIndex: Int, val connectionStr: String, val user: String?, val pass: String?, val timeout: Duration) {
     private var lastUsedTimestamp = 0L
     private var _connection: Connection? = null
     fun clear() = run {
@@ -57,7 +58,8 @@ class JdbcDb(
 ) : AbstractDb(), DbBase, DbQuoteable by dialect {
     override fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz)
 
-    private fun getConnection(): WrappedConnection = WrappedConnection(connection, user, pass, connectionTimeout)
+    private var connectionIndex = AtomicInteger()
+    private fun getConnection(): WrappedConnection = WrappedConnection(connectionIndex.getAndIncrement(), connection, user, pass, connectionTimeout)
 
     @PublishedApi
     internal val connectionPool = InternalDbPool(maxConnections) {
@@ -131,7 +133,7 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
             return if (db.async) withContext(db.dispatcher) { _query(sql, *params) } else _query(sql, *params)
         } finally {
             val time = startTime.elapsedNow()
-            if (DEBUG_JDBC || db.debugSQL) println("QUERY[$time] : $sql, ${params.toList()}")
+            if (DEBUG_JDBC || db.debugSQL) println("QUERY[${wrappedConnection.connectionIndex}][$time] : $sql, ${params.toList()}")
         }
     }
 }
@@ -143,7 +145,12 @@ abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, Colum
     private val _quotedTableName get() = table.quotedTableName
 
     override suspend fun showColumns(): Map<String, Map<String, Any?>> {
-        return query("SHOW COLUMNS FROM $_quotedTableName;").associateBy { it["COLUMN_NAME"]?.toString() ?: "-" }
+        return query("SHOW COLUMNS FROM $_quotedTableName;")
+            .associateBy {
+                it["FIELD"]?.toString()
+                    ?: it["COLUMN_NAME"]?.toString()
+                    ?: "-"
+            }
     }
 
     override suspend fun initialize(): DbTable<T> = this.apply {
@@ -161,7 +168,7 @@ abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, Colum
                     append(" ")
                     append(column.sqlType)
                     if (column.isNullable) {
-                        append(" NULLABLE")
+                        append(" NULL")
                     } else {
                         append(" NOT NULL")
                         when {
@@ -173,6 +180,7 @@ abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, Colum
                 })
             }
             if (result.isFailure) {
+                //throw result.exceptionOrNull()!!
                 println(result.exceptionOrNull())
             }
         }
@@ -182,6 +190,7 @@ abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, Colum
                 query("ALTER TABLE $_quotedTableName ADD $__extrinsic__ VARCHAR NOT NULL DEFAULT '{}'")
             }
             if (result.isFailure) {
+                //throw result.exceptionOrNull()!!
                 println(result.exceptionOrNull())
             }
         }
@@ -198,6 +207,7 @@ abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, Colum
                 })
             }
             if (result.isFailure) {
+                //throw result.exceptionOrNull()!!
                 println(result.exceptionOrNull())
             }
         }
