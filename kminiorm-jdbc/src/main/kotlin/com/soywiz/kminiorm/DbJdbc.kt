@@ -51,6 +51,7 @@ class JdbcDb(
     override val debugSQL: Boolean = false,
     val dialect: SqlDialect = SqlDialect.ANSI,
     override val async: Boolean = true,
+    val maxConnections: Int = 8,
     // MySQL default timeout is 8 hours
     val connectionTimeout: Duration = Duration.ofHours(1L) // Reuse this connection during 1 hour, then reconnect
 ) : AbstractDb(), DbBase, DbQuoteable by dialect {
@@ -59,7 +60,7 @@ class JdbcDb(
     private fun getConnection(): WrappedConnection = WrappedConnection(connection, user, pass, connectionTimeout)
 
     @PublishedApi
-    internal val connectionPool = InternalDbPool {
+    internal val connectionPool = InternalDbPool(maxConnections) {
         if (async) withContext(dispatcher) { getConnection() } else getConnection()
     }
 
