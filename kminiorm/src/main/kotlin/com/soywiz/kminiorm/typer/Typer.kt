@@ -216,6 +216,7 @@ open class Typer private constructor(
             DbRef::class -> DbRef<DbTableElement>(ByteArray(12))
             DbKey::class -> DbKey(ByteArray(12))
             DbIntRef::class -> DbIntRef<DbTableIntElement>()
+            DbStringRef::class -> DbStringRef<DbTableStringElement>()
             DbIntKey::class -> DbIntKey(0L)
             Date::class -> Date(0L)
             LocalDate::class -> LocalDate.MIN

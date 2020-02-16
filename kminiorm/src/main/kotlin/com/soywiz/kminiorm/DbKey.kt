@@ -279,6 +279,18 @@ fun Typer.withDbKeyTyperUntyper(): Typer = this
             it.key
         }
     )
+    .withTyperUntyper<DbStringRef<DbTableStringElement>>(
+        typer = { it, type ->
+            when (it) {
+                is DbStringRef<*> -> it as DbStringRef<DbTableStringElement>
+                is String -> DbStringRef(it)
+                else -> DbStringRef()
+            }
+        },
+        untyper = {
+            it.key
+        }
+    )
     .withTyperUntyper<DbIntKey>(
         typer = { it, type ->
             when (it) {

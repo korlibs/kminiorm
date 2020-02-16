@@ -39,9 +39,26 @@ interface DbIntModel : DbBaseModel {
     ) : DbBaseModel.Abstract(), ExtrinsicData by ExtrinsicData.Mixin(), DbIntModel
 }
 
+interface DbStringModel : DbBaseModel {
+    companion object;
+
+    @DbPrimary
+    val id: DbStringRef<*>
+
+    abstract class Base<T : DbTableStringElement>(
+        override val id: DbStringRef<T> = DbStringRef()
+        //, override val _id: DbRef<T> = DbRef()
+    ) : DbBaseModel.Abstract(), DbStringModel
+    abstract class BaseWithExtrinsic<T : DbTableStringElement>(
+        override val id: DbStringRef<T> = DbStringRef()
+        //,override val _id: DbRef<T> = DbRef()
+    ) : DbBaseModel.Abstract(), ExtrinsicData by ExtrinsicData.Mixin(), DbStringModel
+}
+
 typealias DbTableBaseElement = DbBaseModel
 typealias DbTableElement = DbModel
 typealias DbTableIntElement = DbIntModel
+typealias DbTableStringElement = DbStringModel
 
 suspend fun <T : DbTableElement> Iterable<DbRef<T>>.resolved(table: DbTable<T>): Iterable<T?> = this.map { it.resolved(table) }
 suspend fun <T : DbTableElement> DbRef<T>.resolved(table: DbTable<T>): T? = table.findById(this)
@@ -133,4 +150,5 @@ interface DbTable<T : DbTableBaseElement> {
 
 suspend fun <T : DbTableElement> DbTable<T>.findById(id: DbKey): T? = findOne { DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ) }
 suspend fun <T : DbTableIntElement> DbTable<T>.findByIntId(id: DbIntRef<T>): T? = findOne { DbQuery.BinOp(DbIntModel::id as KProperty1<T, DbIntKey>, id, DbQueryBinOp.EQ) }
+suspend fun <T : DbTableStringElement> DbTable<T>.findByIntId(id: DbStringRef<T>): T? = findOne { DbQuery.BinOp(DbStringModel::id as KProperty1<T, DbStringRef<*>>, id, DbQueryBinOp.EQ) }
 suspend fun <T : DbTableBaseElement> DbTable<T>.findOrCreate(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }, build: () -> T): T = findOne(query) ?: build().also { insert(it) }

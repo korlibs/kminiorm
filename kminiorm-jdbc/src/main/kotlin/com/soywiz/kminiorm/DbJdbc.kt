@@ -451,6 +451,8 @@ fun KType.toSqlType(db: DbBase, annotations: KAnnotatedElement): String {
         }
         DbIntRef::class, DbIntKey::class -> "INTEGER"
         DbRef::class, DbKey::class -> "VARCHAR"
+        DbStringRef::class, DbStringRef::class -> "VARCHAR"
+        DbAnyRef::class, DbAnyRef::class -> "VARCHAR"
         else -> "VARCHAR"
     }
 }
