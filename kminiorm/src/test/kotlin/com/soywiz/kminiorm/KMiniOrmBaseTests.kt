@@ -269,6 +269,19 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals(listOf("hello"), table.findAll().map { it.demo })
     }
 
+    @Test
+    fun testTableDbPrimary() = suspendTest {
+        val table = db.table<TableDbPrimary>().apply { delete { everything } }
+        table.insertIgnore(TableDbPrimary(DbRef("000000000000000000000000")))
+        table.insertIgnore(TableDbPrimary(DbRef("000000000000000000000000")))
+        assertEquals(1, table.count())
+    }
+
+    data class TableDbPrimary(
+        @DbPrimary
+        override val _id: DbRef<Ref1> = DbRef()
+    ) : DbModel
+
     abstract class AutobindedBaseModel : DbModel {
         @DbIgnore
         //var demo: String? = null

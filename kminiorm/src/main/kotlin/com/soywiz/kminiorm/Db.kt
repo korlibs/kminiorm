@@ -94,7 +94,8 @@ class ColumnDef<T : Any>(val property: KProperty1<T, *>) {
     val isNormalIndex = property.findAnnotation<DbIndex>() != null
     //val ignored: Boolean = property.findAnnotation<DbIgnore>() != null
 
-    val isAnyIndex get() = isUnique || isNormalIndex
+    //val isAnyIndex get() = isUnique || isNormalIndex
+    val isAnyIndex get() = isUnique || isNormalIndex || isPrimary
 
     val unique = property.findAnnotation<DbUnique>()
     val index = property.findAnnotation<DbIndex>()

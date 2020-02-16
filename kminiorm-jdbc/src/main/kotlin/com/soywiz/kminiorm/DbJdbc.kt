@@ -198,13 +198,18 @@ abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, Colum
         for ((indexName, columns) in table.ormTableInfo.columnIndices) {
             //println("$column: ${column.quotedName}: ${column.isUnique}, ${column.isIndex}")
             val unique = columns.any { it.isUnique }
+            val primary = columns.any { it.isPrimary }
             val result = kotlin.runCatching {
-                query(buildString {
+                val queryStr = buildString {
                     append("CREATE ")
-                    if (unique) append("UNIQUE ")
+                    when {
+                        primary -> append(if (_db.dialect.supportPrimaryIndex) "PRIMARY " else "UNIQUE ")
+                        unique -> append("UNIQUE ")
+                    }
                     val packs = columns.map { "${it.quotedName} ${it.indexDirection.sname}" }
                     append("INDEX IF NOT EXISTS ${db.quoteColumnName("${table.tableName}_${indexName}")} ON $_quotedTableName (${packs.joinToString(", ")});")
-                })
+                }
+                query(queryStr)
             }
             if (result.isFailure) {
                 //throw result.exceptionOrNull()!!

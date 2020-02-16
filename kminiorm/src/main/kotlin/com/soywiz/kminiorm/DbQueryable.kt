@@ -64,6 +64,8 @@ interface DbBaseTransaction : DbQueryable {
 }
 
 open class SqlDialect() : DbQuoteable {
+    open val supportPrimaryIndex get() = false
+
     companion object ANSI : SqlDialect()
 
     override fun quoteColumnName(str: String) = _quote(str)
@@ -93,6 +95,7 @@ open class SqlDialect() : DbQuoteable {
 }
 
 open class MySqlDialect : SqlDialect() {
+    override val supportPrimaryIndex get() = true
     companion object : MySqlDialect()
     override fun quoteColumnName(str: String) = _quote(str, '`')
     override fun quoteTableName(str: String) = _quote(str, '`')

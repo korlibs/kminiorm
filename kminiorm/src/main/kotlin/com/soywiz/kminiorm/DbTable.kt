@@ -90,6 +90,8 @@ interface DbTable<T : DbTableBaseElement> {
     suspend fun insert(instance: T): T
     suspend fun insert(instance: Partial<T>): DbResult = insert(instance.data)
     suspend fun insert(data: Map<String, Any?>): DbResult
+    suspend fun insertIgnore(value: T): Unit = run { kotlin.runCatching { insert(value) } }
+
     // R
     suspend fun findFlowPartial(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<Partial<T>>
     suspend fun findFlow(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<T> = findFlowPartial(skip, limit, fields, sorted, query)
