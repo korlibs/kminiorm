@@ -37,6 +37,7 @@ open class Typer private constructor(
 
     inline fun <reified T : Any> withTyperUntyper(noinline typer: Typer.(Any, KType) -> T, noinline untyper: Typer.(T) -> Any = { it }) = withTyper(T::class, typer).withUntyper(T::class, untyper)
 
+    @UseExperimental(ExperimentalStdlibApi::class)
     fun untype(instance: Any): Any {
         val clazz = instance::class
         if (clazz in keepTypes) return instance
@@ -51,13 +52,16 @@ open class Typer private constructor(
             is Map<*, *> -> instance.entries.associate { (key, value) -> key?.let { untype(it) } to value?.let { untype(it) } }
             is Iterable<*> -> instance.map { it?.let { untype(it) } }
             else -> {
-
                 when {
                     clazz.java.isEnum -> (instance as Enum<*>).name
                     else -> LinkedHashMap<String, Any?>().also { out ->
-                        for (prop in clazz.memberProperties.filter {
-                            it.isAccessible = true; true
-                        }) out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)?.let { untype(it) }
+                        for (prop in clazz.memberProperties
+                            .filter {
+                                it.isAccessible = true
+                                !it.hasAnnotation<DbIgnore>() && !it.isLateinit
+                            }) {
+                            out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)?.let { untype(it) }
+                        }
                     }
                 }
             }

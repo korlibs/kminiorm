@@ -261,6 +261,23 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals("100", table.findAll().first().key.toString())
     }
 
+    @Test
+    fun testAutobinding() = suspendTest {
+        db.autoBind(AutobindedBaseModel::demo, "hello")
+        val table = db.table<MyAutobinded>().apply { delete { everything } }
+        table.insert(MyAutobinded())
+        assertEquals(listOf("hello"), table.findAll().map { it.demo })
+    }
+
+    abstract class AutobindedBaseModel : DbModel {
+        @DbIgnore
+        //var demo: String? = null
+        lateinit var demo: String
+    }
+    data class MyAutobinded(
+        override val _id: DbRef<MyAutobinded> = DbRef()
+    ) : AutobindedBaseModel()
+
     data class MyIntKey(
         val key: DbIntRef<MyIntKey>
     ) : DbIntModel.Base<MyIntKey>()

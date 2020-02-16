@@ -10,8 +10,12 @@ import kotlin.reflect.jvm.*
 interface Db {
     suspend fun <T : DbTableBaseElement> table(clazz: KClass<T>, initialize: Boolean = true): DbTable<T>
     fun <T : DbTableBaseElement> uninitializedTable(clazz: KClass<T>): DbTable<T>
+    fun <T : Any, R> autoBind(binding: DbBinding<T, R>)
+    fun <T> bindInstance(instance: T): T
     companion object
 }
+
+data class DbBinding<T : Any, R>(val clazz: KClass<T>, val prop: KMutableProperty1<T, R>, val value: R)
 
 abstract class AbstractDb : Db {
     private val cachedTables = java.util.LinkedHashMap<KClass<*>, DbTable<*>>()
@@ -23,6 +27,18 @@ abstract class AbstractDb : Db {
             uninitializedTable(clazz)
         }
     }
+    private var bindings = listOf<DbBinding<*, *>>()
+    override fun <T : Any, R> autoBind(binding: DbBinding<T, R>): Unit = run { bindings = bindings + binding }
+    override fun <T> bindInstance(instance: T): T {
+        val bindings = bindings
+        for (bindIndex in bindings.indices) {
+            val bind = bindings[bindIndex]
+            if (bind.clazz.isInstance(instance)) {
+                (bind.prop as KMutableProperty1<Any?, Any?>).set(instance, bind.value)
+            }
+        }
+        return instance
+    }
     override fun <T : DbTableBaseElement> uninitializedTable(clazz: KClass<T>): DbTable<T> = uninitializedCachedTables.getOrPut(clazz) { constructTable(clazz) } as DbTable<T>
     protected abstract fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T>
 }
@@ -30,6 +46,7 @@ abstract class AbstractDb : Db {
 val __extrinsicUnquoted__ = "__extrinsic__"
 val __extrinsic__ = "\"$__extrinsicUnquoted__\""
 
+inline fun <reified T : Any, R> Db.autoBind(prop: KMutableProperty1<T, R>, value: R) = autoBind(DbBinding(T::class, prop, value))
 suspend inline fun <reified T : DbTableBaseElement> Db.table(): DbTable<T> = table(T::class)
 inline fun <reified T : DbTableBaseElement> Db.uninitializedTable(): DbTable<T> = uninitializedTable(T::class)
 
