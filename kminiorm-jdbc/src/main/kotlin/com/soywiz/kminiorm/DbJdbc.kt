@@ -117,11 +117,11 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
                     statement.setObject(index + 1, param)
                 }
             }
-            val resultSet: ResultSet? = when {
-                sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
-                else -> null.also { statement.executeUpdate() }
+            val map: List<Map<String, Any?>> = when {
+                sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery().use { it.toListMap() }
+                else -> statement.executeUpdate().let { listOf(mapOf("updateCount" to statement.largeUpdateCount)) }
             }
-            JdbcDbResult(resultSet, statement.largeUpdateCount).also { result ->
+            JdbcDbResult(statement.largeUpdateCount, map).also { result ->
                 if (DEBUG_JDBC) println(" --> $result")
             }
         }
@@ -464,9 +464,8 @@ fun KType.toSqlType(db: DbBase, annotations: KAnnotatedElement): String {
 }
 
 class JdbcDbResult(
-    resultSet: ResultSet?,
     override val updateCount: Long,
-    override val data: List<Map<String, Any?>> = resultSet?.toListMap() ?: listOf(mapOf("updateCount" to updateCount))
+    override val data: List<Map<String, Any?>>
 ) : DbResult, List<Map<String, Any?>> by data {
     override fun toString(): String = data.toString()
 }
