@@ -108,21 +108,22 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
     }
 
     private fun _query(sql: String, vararg params: Any?): DbResult {
-        val statement = connection.prepareStatement(sql)
-        for (index in params.indices) {
-            val param = params[index]
-            if (param is ByteArray) {
-                statement.setBlob(index + 1, param.inputStream())
-            } else {
-                statement.setObject(index + 1, param)
+        return connection.prepareStatement(sql).use { statement ->
+            for (index in params.indices) {
+                val param = params[index]
+                if (param is ByteArray) {
+                    statement.setBlob(index + 1, param.inputStream())
+                } else {
+                    statement.setObject(index + 1, param)
+                }
             }
-        }
-        val resultSet: ResultSet? = when {
-            sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
-            else -> null.also { statement.executeUpdate() }
-        }
-        return JdbcDbResult(resultSet, statement).also { result ->
-            if (DEBUG_JDBC) println(" --> $result")
+            val resultSet: ResultSet? = when {
+                sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery()
+                else -> null.also { statement.executeUpdate() }
+            }
+            JdbcDbResult(resultSet, statement.largeUpdateCount).also { result ->
+                if (DEBUG_JDBC) println(" --> $result")
+            }
         }
     }
 
@@ -463,11 +464,10 @@ fun KType.toSqlType(db: DbBase, annotations: KAnnotatedElement): String {
 }
 
 class JdbcDbResult(
-    val resultSet: ResultSet?,
-    val statement: Statement,
-    override val data: List<Map<String, Any?>> = resultSet?.toListMap() ?: listOf(mapOf("updateCount" to statement.updateCount))
+    resultSet: ResultSet?,
+    override val updateCount: Long,
+    override val data: List<Map<String, Any?>> = resultSet?.toListMap() ?: listOf(mapOf("updateCount" to updateCount))
 ) : DbResult, List<Map<String, Any?>> by data {
-    override val updateCount: Long get() = statement.updateCount.toLong()
     override fun toString(): String = data.toString()
 }
 

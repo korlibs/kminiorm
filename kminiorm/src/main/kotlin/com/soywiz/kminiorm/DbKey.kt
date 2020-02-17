@@ -26,7 +26,8 @@ class DbIntRef<T : DbTableIntElement>(key: Long = 0L) : DbIntKey(key), DbTypedRe
 }
 
 // @TODO: Doesn't include an asRef
-class DbStringRef<T : DbTableStringElement>(key: String = "") : DbAnyRef<T, String>(key), DbTypedRef<T, String> {
+//class DbStringRef<T : DbTableStringElement>(key: String = "") : DbAnyRef<T, String>(key), DbTypedRef<T, String> {
+open class DbStringRef<T : DbTableBaseElement>(key: String = "") : DbAnyRef<T, String>(key), DbTypedRef<T, String> {
 }
 
 // @TODO: Doesn't include an asRef
