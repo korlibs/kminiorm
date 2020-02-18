@@ -91,7 +91,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     }
 
     @Test
-    fun testTableUpgrade() = suspendTest {
+    open fun testTableUpgrade() = suspendTest {
         val tableV1 = db.table<TableV1>()
         val tableV2 = db.table<TableV2>()
         tableV1.deleteAll()
@@ -103,7 +103,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     }
 
     @Test
-    fun testTableExtrinsicData() = suspendTest {
+    open fun testTableExtrinsicData() = suspendTest {
         val table = db.table<TableExtrinsic>()
         table.deleteAll()
         table.insert(mapOf("_id" to DbKey().toHexString(), "name" to "hello", "surname" to "world"))

@@ -91,6 +91,7 @@ class ColumnDef<T : Any>(val property: KProperty1<T, *>) {
     val isNullable get() = property.returnType.isMarkedNullable
     val isPrimary = property.findAnnotation<DbPrimary>() != null
     val isUnique = property.findAnnotation<DbUnique>() != null
+    val isPrimaryOrUnique = isPrimary || isUnique
     val isNormalIndex = property.findAnnotation<DbIndex>() != null
     //val ignored: Boolean = property.findAnnotation<DbIgnore>() != null
 
@@ -115,6 +116,7 @@ class OrmTableInfo<T : Any>(val clazz: KClass<T>) {
     val tableName = clazz.findAnnotation<DbName>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
     val columns = clazz.memberProperties.filter { it.findAnnotation<DbIgnore>() == null && !it.name.startsWith("__") }.map { ColumnDef(it) }
     val columnIndices = columns.filter { it.isAnyIndex }.sortedBy { it.indexOrder }.groupBy { it.indexName }
+    val columnUniqueIndices = columns.filter { it.isPrimaryOrUnique }.sortedBy { it.indexOrder }.groupBy { it.indexName }
     val columnsByName = columns.associateBy { it.name }
     fun getColumnByName(name: String) = columnsByName[name]
     fun getColumnByProp(prop: KProperty1<T, *>) = getColumnByName(prop.name)

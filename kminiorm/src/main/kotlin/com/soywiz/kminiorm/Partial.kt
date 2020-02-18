@@ -47,8 +47,8 @@ class PartialCombiner<T : Any>(val clazz: KClass<T>) {
     }.toTypedArray())
 }
 
-inline operator fun <reified T : Any> T.plus(partial: Partial<T>): T =
-    Partial.combine(this, partial, T::class)
+inline operator fun <T : Any> T.plus(partial: Partial<T>): T =
+    Partial.combine(this, partial, partial.clazz)
 
 class PartialBuilder<T> {
     val data = LinkedHashMap<String, Any?>()
@@ -66,6 +66,7 @@ inline fun <reified T : Any> Partial(vararg items: Pair<KProperty1<T, *>, Any>):
 
 @UseExperimental(ExperimentalStdlibApi::class)
 fun <T : Any> Partial(value: T, clazz: KClass<out T> = value::class): Partial<T> =
+    // @TODO: Cache and performance
         Partial(
             (clazz as KClass<T>).members
                 .filterIsInstance<KProperty1<T, *>>()

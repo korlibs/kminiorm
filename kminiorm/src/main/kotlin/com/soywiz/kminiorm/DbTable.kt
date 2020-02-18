@@ -87,11 +87,14 @@ interface DbTable<T : DbTableBaseElement> {
     fun <T> bindInstance(instance: T): T = db.bindInstance(instance)
 
     suspend fun showColumns(): Map<String, Map<String, Any?>>
-    suspend fun initialize(): DbTable<T>
+    suspend fun initialize(): DbTable<T> = this
     // C
     suspend fun insert(instance: T): T
     suspend fun insert(instance: Partial<T>): DbResult = insert(instance.data)
-    suspend fun insert(data: Map<String, Any?>): DbResult
+    suspend fun insert(data: Map<String, Any?>): DbResult {
+        insert(typer.type(data, clazz))
+        return DbResult(mapOf("insert" to 1))
+    }
     suspend fun insertIgnore(value: T): Unit = run { kotlin.runCatching { insert(value) } }
 
     // R
@@ -150,7 +153,7 @@ interface DbTable<T : DbTableBaseElement> {
     suspend fun delete(limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long
     suspend fun deleteAll(limit: Long? = null) = delete() { everything }
 
-    suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R
+    suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R = callback()
 }
 
 suspend fun <T : DbTableElement> DbTable<T>.findById(id: DbKey): T? = findOne { DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ) }

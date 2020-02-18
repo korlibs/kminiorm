@@ -1,5 +1,6 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.internal.DynamicExt
 import kotlin.internal.*
 import kotlin.reflect.*
 
@@ -23,7 +24,9 @@ abstract class DbQuery<T> {
     data class BinOp<T, R>(val prop: KProperty1<T, R>, val literal: R, val op: DbQueryBinOp) : DbQuery<T>()
     data class BinOpNode<T>(val left: DbQuery<T>, val op: DbQueryBinOp, val right: DbQuery<T>) : DbQuery<T>()
     data class UnOpNode<T>(val op: DbQueryUnOp, val right: DbQuery<T>) : DbQuery<T>()
-    data class IN<T, R>(val prop: KProperty1<T, R>, val literal: List<R>) : DbQuery<T>()
+    data class IN<T, R>(val prop: KProperty1<T, R>, val literal: List<R>) : DbQuery<T>() {
+        val literalSet by lazy { literal.toSet() }
+    }
     data class Raw<T>(val map: Map<String, Any?>) : DbQuery<T>()
 }
 
