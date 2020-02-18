@@ -37,6 +37,8 @@ open class DbQueryBuilder<T> {
 
     fun id(id: DbKey) = DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ)
     fun raw(map: Map<String, Any?>) = DbQuery.Raw<T>(map)
+    infix fun AND(clauses: Iterable<DbQuery<T>>) = clauses.reduce { l, r -> l AND r }
+    infix fun OR(clauses: Iterable<DbQuery<T>>) = clauses.reduce { l, r -> l OR r }
     infix fun DbQuery<T>.AND(that: DbQuery<T>) = if (this is DbQuery.Never<*> || that is DbQuery.Never<*>) NEVER else DbQuery.BinOpNode(this, DbQueryBinOp.AND, that)
     infix fun DbQuery<T>.OR(that: DbQuery<T>) = DbQuery.BinOpNode(this, DbQueryBinOp.OR, that)
     fun NOT(q: DbQuery<T>) = DbQuery.UnOpNode(DbQueryUnOp.NOT, q)

@@ -145,7 +145,8 @@ interface DbTable<T : DbTableBaseElement> {
         }
     }
     // D
-    suspend fun delete(limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Long
+    suspend fun delete(limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long
+    suspend fun deleteAll(limit: Long? = null) = delete() { everything }
 
     suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R
 }

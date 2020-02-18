@@ -1,6 +1,7 @@
 package com.soywiz.kminiorm
 
 import com.soywiz.kminiorm.typer.*
+import com.soywiz.kminiorm.where.*
 import kotlinx.coroutines.flow.*
 import java.util.*
 import kotlin.test.*
@@ -9,7 +10,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     @Test
     fun testBasicTable() = suspendTest {
         val table = db.table<MyTestTable>()
-        table.delete { everything }
+        table.deleteAll()
         val item0 = table.insert(MyTestTable(
                 _id = DbKey("5d9c47664b3f792e8d8ceb33"),
                 uuid = UUID.fromString("5190ac73-e244-48fb-a535-36a3b3e653db"),
@@ -39,14 +40,14 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals(3, table.findById(item0._id)?.int)
         assertEquals("hello", table.findById(item0._id)?.string)
 
-        table.delete { everything }
+        table.deleteAll()
         assertEquals(0, table.findAll().count())
     }
 
     @Test
     fun testBasicCounter() = suspendTest {
         val table = db.table<MyCounterTable>()
-        table.delete { everything }
+        table.deleteAll()
         val item = table.insert(MyCounterTable())
         assertEquals(
                 1L,
@@ -67,7 +68,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         val table = db.table<UniqueModel>()
         val a = UniqueModel("test")
         val b = UniqueModel("test")
-        table.delete { everything }
+        table.deleteAll()
         table.insert(a)
         assertFailsWith<DuplicateKeyDbException> {
             table.insert(b)
@@ -79,7 +80,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         val table = db.table<UpsertTestModel>()
         val a = UpsertTestModel("test", "a", _id = DbKey("000000000000000000000001"))
         val b = UpsertTestModel("test", "b", _id = DbKey("000000000000000000000002"))
-        table.delete { everything }
+        table.deleteAll()
         table.insert(a)
         val c = table.upsert(b)
         //println(table.find { everything }.joinToString("\n"))
@@ -93,7 +94,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     fun testTableUpgrade() = suspendTest {
         val tableV1 = db.table<TableV1>()
         val tableV2 = db.table<TableV2>()
-        tableV1.delete { everything }
+        tableV1.deleteAll()
         val row1 = tableV1.insert(TableV1("hello", "world"))
         val row2 = tableV2.findOne { TableV2::name eq "hello" }
         assertEquals("hello", row2?.name)
@@ -104,7 +105,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     @Test
     fun testTableExtrinsicData() = suspendTest {
         val table = db.table<TableExtrinsic>()
-        table.delete { everything }
+        table.deleteAll()
         table.insert(mapOf("_id" to DbKey().toHexString(), "name" to "hello", "surname" to "world"))
         val item = table.findOne()
         assertEquals("hello", item?.name)
@@ -114,7 +115,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     @Test
     fun testMultiColumnIndex() = suspendTest {
         val table = db.table<MultiColumnIndexTable>()
-        table.delete { everything }
+        table.deleteAll()
         table.insert(MultiColumnIndexTable(a = "a", b = "b1", c = "c1"))
         table.insert(MultiColumnIndexTable(a = "a", b = "b2", c = "c2"))
         assertFailsWith<DuplicateKeyDbException> {
@@ -134,7 +135,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     @Test
     fun testStoreTypes() = suspendTest {
         val table = db.table<ArrayOfDbKey>()
-        table.delete { everything }
+        table.deleteAll()
         val item = table.insert(ArrayOfDbKey(listOf()))
         item.copy(items = listOf(DbKey("000000000000000000000001"), DbKey("000000000000000000000002")))
         table.update(Partial(mapOf(ArrayOfDbKey::items.name to listOf(DbKey("000000000000000000000001"), DbKey("000000000000000000000002"))), ArrayOfDbKey::class)) { id(item._id) }
@@ -147,7 +148,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     @Test
     fun testUpdate1() = suspendTest {
         val table = db.table<Update1>()
-        table.delete { everything }
+        table.deleteAll()
         table.insert(Update1("a", "b", "c"))
         for (item in table.findAll()) {
             table.update(Partial(Update1::latestPublishedVersion to "d")) { Update1::_id eq item._id }
@@ -167,7 +168,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testArrayOfCustom() = suspendTest {
-        val table = db.table<ArrayOfCustom>().apply { delete { everything } }
+        val table = db.table<ArrayOfCustom>().apply { deleteAll() }
         val item = table.insert(ArrayOfCustom(listOf()))
         table.update(Partial(mapOf(
             "items" to listOf(mapOf("a" to 1, "b" to 2, "c" to 3))
@@ -177,8 +178,8 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testRefs() = suspendTest {
-        val refs1 = db.table<Ref1>().apply { delete { everything } }
-        val refs2 = db.table<Ref2>().apply { delete { everything } }
+        val refs1 = db.table<Ref1>().apply { deleteAll() }
+        val refs2 = db.table<Ref2>().apply { deleteAll() }
         val rref2 = Ref2("hello")
         val ref2 = refs2.insert(rref2)
         val ref1 = refs1.insert(Ref1(listOf(ref2._id)))
@@ -190,7 +191,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testEverything() = suspendTest {
-        val simples = db.table<Simple>().apply { delete { everything } }
+        val simples = db.table<Simple>().apply { deleteAll() }
         val s1 = Simple(1, 2, 3)
         val s2 = Simple(10, 20, 30)
         val s3 = Simple(100, 200, 300)
@@ -204,7 +205,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testOrIn() = suspendTest {
-        val simples = db.table<Simple>().apply { delete { everything } }
+        val simples = db.table<Simple>().apply { deleteAll() }
         val s1 = Simple(1, 2, 3)
         val s2 = Simple(10, 20, 30)
         val s3 = Simple(100, 200, 300)
@@ -217,7 +218,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testOrIn2() = suspendTest {
-        val simples = db.table<Simple>().apply { delete { everything } }
+        val simples = db.table<Simple>().apply { deleteAll() }
         val s1 = Simple(1, 2, 3)
         val s2 = Simple(10, 20, 30)
         val s3 = Simple(100, 200, 300)
@@ -230,7 +231,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testGe() = suspendTest {
-        val simples = db.table<Simple>().apply { delete { everything } }
+        val simples = db.table<Simple>().apply { deleteAll() }
         val s1 = Simple(1, 2, 3)
         val s2 = Simple(10, 20, 30)
         val s3 = Simple(100, 200, 300)
@@ -245,7 +246,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testEnum() = suspendTest {
-        val simples = db.table<CustomWithEnum>().apply { delete { everything } }
+        val simples = db.table<CustomWithEnum>().apply { deleteAll() }
         val item1 = CustomWithEnum(1, "hello", CustomEnum.HELLO)
         simples.insert(item1)
         assertEquals(1, simples.findAll().count())
@@ -256,7 +257,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun testIntKey() = suspendTest {
-        val table = db.table<MyIntKey>().apply { delete { everything } }
+        val table = db.table<MyIntKey>().apply { deleteAll() }
         table.insert(MyIntKey(DbIntRef(100L)))
         assertEquals("100", table.findAll().first().key.toString())
     }
@@ -264,14 +265,14 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     @Test
     fun testAutobinding() = suspendTest {
         db.autoBind(AutobindedBaseModel::demo, "hello")
-        val table = db.table<MyAutobinded>().apply { delete { everything } }
+        val table = db.table<MyAutobinded>().apply { deleteAll() }
         table.insert(MyAutobinded())
         assertEquals(listOf("hello"), table.findAll().map { it.demo })
     }
 
     @Test
     fun testTableDbPrimary() = suspendTest {
-        val table = db.table<TableDbPrimary>().apply { delete { everything } }
+        val table = db.table<TableDbPrimary>().apply { deleteAll() }
         table.insertIgnore(TableDbPrimary(DbRef("000000000000000000000000")))
         table.insertIgnore(TableDbPrimary(DbRef("000000000000000000000000")))
         assertEquals(1, table.count())
@@ -306,7 +307,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
 
     @Test
     fun test200Insert() = suspendTest {
-        val simples = db.table<BigTable>().apply { delete { everything } }
+        val simples = db.table<BigTable>().apply { deleteAll() }
         for (n in 0 until 200) simples.insert(BigTable(n))
         assertEquals(200, simples.find { everything }.size)
     }
@@ -405,4 +406,15 @@ abstract class KMiniOrmBaseTests(val db: Db) {
             val listString: List<String>,
             val mapString: Map<String, Any?>
     ) : DbModel
+
+    @Test
+    fun testWhere() = suspendTest {
+        val table = db.table<Simple>().apply { deleteAll() }
+        table.insert(Simple(a = 10, b = 20, c = 30))
+        table.insert(Simple(a = 10, b = 21, c = 31))
+        table.insert(Simple(a = 10, b = 22, c = 33))
+        assertEquals(2, table.where.gt(Simple::b, 20).count())
+        assertEquals(1, table.where.gt(Simple::b, 20).limit(1).count())
+        assertEquals(listOf(33), table.where.gt(Simple::b, 20).skip(1).map { it.c }.toList())
+    }
 }
