@@ -410,9 +410,11 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     @Test
     fun testWhere() = suspendTest {
         val table = db.table<Simple>().apply { deleteAll() }
-        table.insert(Simple(a = 10, b = 20, c = 30))
+        table.insert(Simple(a = 10, b = 20, c = 31))
         table.insert(Simple(a = 10, b = 21, c = 31))
-        table.insert(Simple(a = 10, b = 22, c = 33))
+        table.insert(Simple(a = 10, b = 21, c = 33))
+        assertEquals(2, table.where.where { Simple::b eq 21 }.count())
+        assertEquals(1, table.where.eq(Simple::b, 21).eq(Simple::c, 31).count())
         assertEquals(2, table.where.gt(Simple::b, 20).count())
         assertEquals(1, table.where.gt(Simple::b, 20).limit(1).count())
         assertEquals(listOf(33), table.where.gt(Simple::b, 20).skip(1).map { it.c }.toList())
