@@ -12,6 +12,8 @@ interface DbBaseModel {
     }
 }
 
+fun <T : DbBaseModel> T.bind(db: Db): T = db.bindInstance(this)
+
 interface DbModel : DbBaseModel {
     companion object;
     @DbPrimary

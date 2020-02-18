@@ -266,8 +266,10 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     fun testAutobinding() = suspendTest {
         db.autoBind(AutobindedBaseModel::demo, "hello")
         val table = db.table<MyAutobinded>().apply { deleteAll() }
-        table.insert(MyAutobinded())
+        table.insert(MyAutobinded("sample"))
+        table.upsert(MyAutobinded("sample"))
         assertEquals(listOf("hello"), table.findAll().map { it.demo })
+        assertEquals(listOf("hello:sample"), table.find(fields = listOf(MyAutobinded::sample)) { everything }.map { it.demo + ":" + it.sample })
     }
 
     @Test
@@ -289,6 +291,8 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         lateinit var demo: String
     }
     data class MyAutobinded(
+        @DbUnique
+        val sample: String,
         override val _id: DbRef<MyAutobinded> = DbRef()
     ) : AutobindedBaseModel()
 
