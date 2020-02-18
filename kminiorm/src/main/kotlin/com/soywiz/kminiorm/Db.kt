@@ -11,6 +11,7 @@ interface Db {
     suspend fun <T : DbTableBaseElement> table(clazz: KClass<T>, initialize: Boolean = true): DbTable<T>
     fun <T : DbTableBaseElement> uninitializedTable(clazz: KClass<T>): DbTable<T>
     fun <T : Any, R> autoBind(binding: DbBinding<T, R>)
+    fun registerBinder(binder: (value: Any?) -> Unit)
     fun <T> bindInstance(instance: T): T
     companion object
 }
@@ -27,16 +28,15 @@ abstract class AbstractDb : Db {
             uninitializedTable(clazz)
         }
     }
-    private var bindings = listOf<DbBinding<*, *>>()
-    override fun <T : Any, R> autoBind(binding: DbBinding<T, R>): Unit = run { bindings = bindings + binding }
+    private var binders = listOf<(value: Any?) -> Unit>()
+    override fun registerBinder(binder: (value: Any?) -> Unit) {
+        synchronized(this) { binders += binder }
+    }
+    override fun <T : Any, R> autoBind(binding: DbBinding<T, R>): Unit = registerBinder {
+        if (binding.clazz.isInstance(it)) (binding.prop as KMutableProperty1<Any?, Any?>).set(it, binding.value)
+    }
     override fun <T> bindInstance(instance: T): T {
-        val bindings = bindings
-        for (bindIndex in bindings.indices) {
-            val bind = bindings[bindIndex]
-            if (bind.clazz.isInstance(instance)) {
-                (bind.prop as KMutableProperty1<Any?, Any?>).set(instance, bind.value)
-            }
-        }
+        for (binder in binders) binder(instance)
         return instance
     }
     override fun <T : DbTableBaseElement> uninitializedTable(clazz: KClass<T>): DbTable<T> = uninitializedCachedTables.getOrPut(clazz) { constructTable(clazz) } as DbTable<T>
