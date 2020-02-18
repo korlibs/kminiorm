@@ -2,11 +2,27 @@ package com.soywiz.kminiorm.memory
 
 import com.soywiz.kminiorm.*
 import com.soywiz.kminiorm.typer.*
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlin.coroutines.*
 import kotlin.reflect.*
 
-class MemoryDb(val typer: Typer = DbTyper) : AbstractDb() {
+class MemoryDb(
+    val typer: Typer = DbTyper,
+    val dialect: SqlDialect = SqlDialect,
+    override val dispatcher: CoroutineContext = Dispatchers.IO
+) : AbstractDb(), DbBase, DbQuoteable by dialect {
     override fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T> = MemoryDbTable(this, clazz, typer)
+
+    override suspend fun <T> transaction(callback: suspend DbBaseTransaction.() -> T): T = callback(MemoryTransaction(this))
+
+    override suspend fun query(sql: String, vararg params: Any?): DbResult = TODO()
+}
+
+class MemoryTransaction(override val db: DbBase) : DbBaseTransaction {
+    override suspend fun DbBase.commit(): Unit = Unit
+    override suspend fun DbBase.rollback(): Unit = Unit
+    override suspend fun query(sql: String, vararg params: Any?): DbResult = db.query(sql, *params)
 }
 
 class MemoryDbIndex<T : DbTableBaseElement>(val name: String, val columns: List<ColumnDef<T>>) {
