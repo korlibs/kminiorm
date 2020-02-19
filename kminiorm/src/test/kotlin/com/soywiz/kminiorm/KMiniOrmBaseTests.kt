@@ -43,6 +43,14 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         table.deleteAll()
         assertEquals(0, table.findAll().count())
     }
+    @Test
+    fun testBoolean() = suspendTest {
+        val table = db.table<StoreTypesTable>().also { it.deleteAll() }
+        table.insert(StoreTypesTable(false))
+        table.insert(StoreTypesTable(true))
+        assertEquals(true, table.find { StoreTypesTable::bool eq true }.first().bool)
+        assertEquals(false, table.find { StoreTypesTable::bool eq false }.first().bool)
+    }
 
     @Test
     fun testBasicCounter() = suspendTest {

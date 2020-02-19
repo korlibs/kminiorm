@@ -73,6 +73,7 @@ open class SqlDialect() : DbQuoteable {
     override fun quoteString(str: String) = _quote(str, type = '\'')
     override fun quoteLiteral(value: Any?) = when (value) {
         null -> "NULL"
+        is Boolean -> "$value"
         is Int, is Long, is Float, is Double, is Number -> "$value"
         is DbIntKey -> "${value.key}"
         is String -> quoteString(value)
