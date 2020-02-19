@@ -327,6 +327,8 @@ abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, Colum
         // Can't make an UPDATE query that does nothing
         if (setEntries.isEmpty() && incrEntries.isEmpty()) return 0L
 
+        val values = (setEntries + incrEntries).map { table.serializeColumn(it.value, it.key) }
+
         return query(buildString {
             append("UPDATE ")
             append(table.quotedTableName)
@@ -336,7 +338,7 @@ abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, Colum
             append(DbQueryBuilder.build(query).toString(_db))
             if (limit != null) append(" LIMIT $limit")
             append(";")
-        }, *((setEntries + incrEntries).map { table.serializeColumn(it.value, it.key) }).toTypedArray()).updateCount
+        }, *values.toTypedArray()).updateCount
     }
 
     override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
@@ -389,7 +391,9 @@ class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val 
             is String -> value
             is Number -> value
             is UUID -> value
-            is Date -> java.sql.Date(value.time)
+            //is Date -> java.sql.Date(value.time)
+            is java.sql.Date -> value
+            is java.util.Date -> Timestamp(value.time)
             else -> MiniJson.stringify(JsonTyper.untype(value))
         }
         //return value
@@ -505,6 +509,7 @@ private val JdbcDbTyper = Typer()
                         is String -> Date(Timestamp.valueOf(it).time)
                         is LocalDate -> Date.from(it.atStartOfDay(ZoneId.systemDefault()).toInstant())
                         is Date -> it
+                        is Timestamp -> Date(it.time)
                         else -> Date(0L)
                     }
                 },

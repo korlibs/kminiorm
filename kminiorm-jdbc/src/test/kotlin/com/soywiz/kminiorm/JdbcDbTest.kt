@@ -1,10 +1,11 @@
 package com.soywiz.kminiorm
 
+import java.text.*
 import java.util.*
 import kotlin.test.*
 
 class JdbcDbTest {
-    fun db() = JdbcDb("jdbc:h2:mem:test;DB_CLOSE_DELAY=10", "user", "")
+    fun db(debug: Boolean = false) = JdbcDb("jdbc:h2:mem:test;DB_CLOSE_DELAY=10", "user", "", debugSQL = debug)
 
     @Test
     fun test() = suspendTest {
@@ -46,6 +47,22 @@ class JdbcDbTest {
         val demoTable = db.table<Demo4>()
         demoTable.insert(Demo4(Demo4.Item("hello")))
         assertEquals("hello", demoTable.find().first().item.name)
+    }
+
+    @Test
+    fun testDate1() = suspendTest {
+        //val db = db(debug = true)
+        val db = db(debug = false)
+        val table = db.table<Date1>().apply { deleteAll() }
+        table.upsert(Date1(0, Date(1, 2, 3, 4, 5, 6)))
+        table.upsert(Date1(0, Date(1, 2, 3, 4, 5, 6)))
+        assertEquals(
+            "1901-03-03 04:05:06",
+            SimpleDateFormat("YYYY-MM-dd HH:mm:ss").format(table.findOne()!!.date)
+        )
+    }
+
+    data class Date1(@DbPrimary val id: Int, val date: Date) : DbModel.Base<Demo4>() {
     }
 
     data class Demo4(val item: Item) : DbModel.Base<Demo4>() {
