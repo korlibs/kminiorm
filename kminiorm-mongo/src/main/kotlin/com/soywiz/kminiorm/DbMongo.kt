@@ -22,15 +22,15 @@ import kotlin.reflect.*
 //val DEBUG_MONGO = true
 val DEBUG_MONGO = false
 
-class DbMongo private constructor(val mongoClient: MongoClient, val client: MongoDatabase, val typer: Typer) : AbstractDb() {
+class DbMongo private constructor(val mongoClient: MongoClient, val client: MongoDatabase, val typer: Typer, val debug: Boolean) : AbstractDb() {
     companion object {
         /**
          * Example: DbMongo("mongodb://127.0.0.1:27017/kminiormtest")
          */
-        operator fun invoke(connectionString: String, typer: Typer = mongoTyper): DbMongo {
+        operator fun invoke(connectionString: String, typer: Typer = mongoTyper, debug: Boolean = false): DbMongo {
             val connection = ConnectionString(connectionString)
             val client = MongoClients.create(connection)
-            return DbMongo(client, client.getDatabase(connection.database ?: error("No database specified")), typer)
+            return DbMongo(client, client.getDatabase(connection.database ?: error("No database specified")), typer, debug)
         }
     }
 
@@ -143,9 +143,12 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
             if (setData.isNotEmpty()) map["\$set"] = setData
             if (incData.isNotEmpty()) map["\$inc"] = incData
         })
-
+        if (updateMap.isEmpty()) return 0L
         val result = awaitMongo<UpdateResult> {
             val bson = DbQueryBuilder.build(query).toMongoMap().toJsonObject(db)
+            if (db.debug) {
+                println("DbMongo.update: $bson")
+            }
             when (limit) {
                 null -> dbCollection.updateMany(bson, updateMap, it)
                 1L -> dbCollection.updateOne(bson, updateMap, it)
