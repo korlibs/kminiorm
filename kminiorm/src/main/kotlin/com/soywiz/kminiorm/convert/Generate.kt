@@ -197,8 +197,37 @@ data class Other2(val date: List<Date>)
 data class Other(val a: Int)
 data class MyClass(val clazz: MyClass?, val a: String, val b: String, val c: Int? = null, val other: Other)
 
+class GenerateConverters {
+    internal val converters: MutableMap<KClass<*>, (value: Any?) -> Any> = LinkedHashMap()
+
+    fun <T : Any> register(clazz: KClass<T>, block: (value: Any?) -> T): GenerateConverters = this.apply {
+        converters[clazz] = block as (Any?) -> Any
+    }
+
+    inline fun <reified T : Any> register(noinline block: (value: Any?) -> T): GenerateConverters = register(T::class, block)
+}
+
+val DefaultGenerateConverters = GenerateConverters()
+    .register<Date> {
+        when (it) {
+            is Number -> Date(it.toLong())
+            is String -> Date(it)
+            is Date -> it
+            else -> Date(0L)
+        }
+    }
+    .register<LocalDate> {
+        when (it) {
+            is Number -> Date(it.toLong()).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
+            is String -> LocalDate.parse(it)
+            is LocalDate -> it
+            else -> LocalDate.ofEpochDay(0L)
+        }
+    }
+
 open class GenerateFactory(
     val debug: Boolean = false,
+    val defaultConverters: GenerateConverters = DefaultGenerateConverters,
     val customConverters: ((clazz: KClass<*>) -> ((value: Any?) -> Any)?) = { null }
 ) {
     companion object {
@@ -240,28 +269,13 @@ open class GenerateFactory(
                 }
                 createGenerate(clazz) { converter(it) as T }
             }
-            clazz == Date::class -> {
-                createGenerate(clazz as KClass<Date>) {
-                    when (it) {
-                        is Number -> Date(it.toLong())
-                        is String -> Date(it)
-                        is Date -> it
-                        else -> Date(0L)
-                    }
-                }
-            }
-            clazz == LocalDate::class -> {
-                createGenerate(clazz as KClass<LocalDate>) {
-                    when (it) {
-                        is Number -> Date(it.toLong()).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
-                        is String -> LocalDate.parse(it)
-                        is LocalDate -> it
-                        else -> LocalDate.ofEpochDay(0L)
-                    }
-                }
-            }
             else -> {
-                GenerateClass(clazz).generateUncached()
+                val converter = defaultConverters.converters[clazz]
+                if (converter != null) {
+                    createGenerate(clazz, converter as ((Any?) -> T))
+                } else {
+                    GenerateClass(clazz).generateUncached()
+                }
             }
         }
     } as Generate<T>
