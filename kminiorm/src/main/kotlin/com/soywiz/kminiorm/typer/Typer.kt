@@ -196,37 +196,44 @@ open class Typer private constructor(
     @UseExperimental(ExperimentalStdlibApi::class)
     inline fun <reified T> type(instance: Any): T = type(instance, typeOf<T>())
 
+    private val generateFactory by lazy { GenerateFactory() }
+
     fun createDefault(type: KType): Any? {
         if (type.isMarkedNullable) return null
-        val clazz = type.jvmErasure
-        val jclazz = clazz.java
-        return when (clazz) {
-            Unit::class -> Unit
-            Boolean::class -> false
-            Float::class -> 0f
-            Double::class -> 0.0
-            Byte::class -> 0.toByte()
-            Short::class -> 0.toShort()
-            Char::class -> 0.toChar()
-            Int::class -> 0
-            Long::class -> 0L
-            String::class -> ""
-            List::class, ArrayList::class -> arrayListOf<Any?>()
-            Map::class, HashMap::class, MutableMap::class -> mutableMapOf<Any?, Any?>()
-            DbRef::class -> DbRef<DbTableElement>(ByteArray(12))
-            DbKey::class -> DbKey(ByteArray(12))
-            DbIntRef::class -> DbIntRef<DbTableIntElement>()
-            DbStringRef::class -> DbStringRef<DbTableStringElement>()
-            DbIntKey::class -> DbIntKey(0L)
-            Date::class -> Date(0L)
-            LocalDate::class -> LocalDate.MIN
-            else -> {
-                if (jclazz.isEnum) {
-                    jclazz.enumConstants.first()
-                } else {
-                    val constructor = clazz.primaryConstructor ?: clazz.constructors.firstOrNull { it.isAccessible }
-                    ?: error("Class $clazz doesn't have public constructors")
-                    constructor.call(*constructor.valueParameters.map { createDefault(it.type) }.toTypedArray())
+        //if (true) {
+        if (false) {
+            return generateFactory.get(type.jvmErasure.java).generateFromMap(mapOf())
+        } else {
+            val clazz = type.jvmErasure
+            val jclazz = clazz.java
+            return when (clazz) {
+                Unit::class -> Unit
+                Boolean::class -> false
+                Float::class -> 0f
+                Double::class -> 0.0
+                Byte::class -> 0.toByte()
+                Short::class -> 0.toShort()
+                Char::class -> 0.toChar()
+                Int::class -> 0
+                Long::class -> 0L
+                String::class -> ""
+                List::class, ArrayList::class -> arrayListOf<Any?>()
+                Map::class, HashMap::class, MutableMap::class -> mutableMapOf<Any?, Any?>()
+                DbRef::class -> DbRef<DbTableElement>(ByteArray(12))
+                DbKey::class -> DbKey(ByteArray(12))
+                DbIntRef::class -> DbIntRef<DbTableIntElement>()
+                DbStringRef::class -> DbStringRef<DbTableStringElement>()
+                DbIntKey::class -> DbIntKey(0L)
+                Date::class -> Date(0L)
+                LocalDate::class -> LocalDate.MIN
+                else -> {
+                    if (jclazz.isEnum) {
+                        jclazz.enumConstants.first()
+                    } else {
+                        val constructor = clazz.primaryConstructor ?: clazz.constructors.firstOrNull { it.isAccessible }
+                        ?: error("Class $clazz doesn't have public constructors")
+                        constructor.call(*constructor.valueParameters.map { createDefault(it.type) }.toTypedArray())
+                    }
                 }
             }
         }

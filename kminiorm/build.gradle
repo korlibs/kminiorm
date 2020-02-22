@@ -1,0 +1,6 @@
+dependencies {
+    implementation 'org.javassist:javassist:3.26.0-GA'
+    //implementation 'net.bytebuddy:byte-buddy:1.10.8'
+    //implementation 'com.fasterxml.jackson.module:jackson-module-afterburner:2.7.1'
+    //implementation 'com.fasterxml.jackson.module:jackson-module-kotlin:2.7.1'
+}
