@@ -13,11 +13,16 @@ import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
 
+@UseExperimental(ExperimentalStdlibApi::class)
 open class Typer private constructor(
-    private val keepTypes: Set<KClass<*>> = setOf(),
-    private val untypersByClass: Map<KClass<*>, Typer.(Any) -> Any> = mapOf(),
-    private val typersByClass: Map<KClass<*>, Typer.(Any, KType) -> Any> = mapOf()
+    internal val keepTypes: Set<KClass<*>> = setOf(),
+    internal val untypersByClass: Map<KClass<*>, Typer.(Any) -> Any> = mapOf(),
+    internal val typersByClass: Map<KClass<*>, Typer.(Any, KType) -> Any> = mapOf(),
+    //val USE_JIT: Boolean = true
+    val USE_JIT: Boolean = false
 ) {
+    val generateFactory: GenerateFactory by lazy { GenerateFactory() }
+
     constructor() : this(keepTypes = setOf())
 
     private fun copy(
@@ -74,8 +79,6 @@ open class Typer private constructor(
         else -> untype(instance)
     }
 
-    fun <T> type(instance: Any, targetType: KType): T = _type(instance, targetType) as T
-
     private fun _toIterable(instance: Any?): Iterable<Any?> {
         if (instance == null) return listOf()
         if (instance is Iterable<*>) return instance as Iterable<Any?>
@@ -92,7 +95,14 @@ open class Typer private constructor(
             .associate { it.name to (it as KProperty1<Any?, Any?>).get(instance) }
     }
 
-    private fun _type(instance: Any?, targetType: KType): Any? {
+    inline fun <reified T> type(instance: Any?): T = type(instance, typeOf<T>())
+    fun <T : Any> type(instance: Any?, type: KClass<T>): T = type(instance, type.starProjectedType)
+    fun <T> type(instance: Any?, targetType: KType): T = _type(instance, targetType) as T
+
+    private fun _type(instance: Any?, targetType: KType): Any? = if (USE_JIT) _typeJit(instance, targetType) else _typeReflection(instance, targetType)
+    private fun _typeJit(instance: Any?, targetType: KType): Any? = generateFactory.get(targetType).convert(instance)
+
+    private fun _typeReflection(instance: Any?, targetType: KType): Any? {
         if (targetType.isMarkedNullable && instance == null) return null
         val targetClass = targetType.jvmErasure
         val targetClassJava = targetClass.java
@@ -192,54 +202,82 @@ open class Typer private constructor(
         }
     }
 
-    fun <T : Any> type(instance: Any, type: KClass<T>): T = type(instance, type.starProjectedType)
-
-    @UseExperimental(ExperimentalStdlibApi::class)
-    inline fun <reified T> type(instance: Any): T = type(instance, typeOf<T>())
-
-    private val generateFactory by lazy { GenerateFactory() }
-
-    @UseExperimental(ExperimentalStdlibApi::class)
     inline fun <reified T> createDefault(): Any? = createDefault(typeOf<T>())
 
-    fun createDefault(type: KType): Any? {
+    fun createDefault(type: KType): Any? = if (USE_JIT) createDefaultJit(type) else createDefaultReflection(type)
+
+    fun createDefaultJit(type: KType): Any? {
         if (type.isMarkedNullable) return null
-        if (true) {
-        //if (false) {
-            return generateFactory.get(type.jvmErasure.java).convertDefault()
-        } else {
-            val clazz = type.jvmErasure
-            val jclazz = clazz.java
-            return when (clazz) {
-                Unit::class -> Unit
-                Boolean::class -> false
-                Float::class -> 0f
-                Double::class -> 0.0
-                Byte::class -> 0.toByte()
-                Short::class -> 0.toShort()
-                Char::class -> 0.toChar()
-                Int::class -> 0
-                Long::class -> 0L
-                String::class -> ""
-                List::class, ArrayList::class -> arrayListOf<Any?>()
-                Map::class, HashMap::class, MutableMap::class -> mutableMapOf<Any?, Any?>()
-                DbRef::class -> DbRef<DbTableElement>(ByteArray(12))
-                DbKey::class -> DbKey(ByteArray(12))
-                DbIntRef::class -> DbIntRef<DbTableIntElement>()
-                DbStringRef::class -> DbStringRef<DbTableStringElement>()
-                DbIntKey::class -> DbIntKey(0L)
-                Date::class -> Date(0L)
-                LocalDate::class -> LocalDate.MIN
-                else -> {
-                    if (jclazz.isEnum) {
-                        jclazz.enumConstants.first()
-                    } else {
-                        val constructor = clazz.primaryConstructor ?: clazz.constructors.firstOrNull { it.isAccessible }
-                        ?: error("Class $clazz doesn't have public constructors")
-                        constructor.call(*constructor.valueParameters.map { createDefault(it.type) }.toTypedArray())
-                    }
+        return generateFactory.get(type.jvmErasure.java).convertDefault()
+    }
+
+    fun createDefaultReflection(type: KType): Any? {
+        if (type.isMarkedNullable) return null
+        val clazz = type.jvmErasure
+        val jclazz = clazz.java
+        return when (clazz) {
+            Unit::class -> Unit
+            Boolean::class -> false
+            Float::class -> 0f
+            Double::class -> 0.0
+            Byte::class -> 0.toByte()
+            Short::class -> 0.toShort()
+            Char::class -> 0.toChar()
+            Int::class -> 0
+            Long::class -> 0L
+            String::class -> ""
+            List::class, ArrayList::class -> arrayListOf<Any?>()
+            Map::class, HashMap::class, MutableMap::class -> mutableMapOf<Any?, Any?>()
+            DbRef::class -> DbRef<DbTableElement>(ByteArray(12))
+            DbKey::class -> DbKey(ByteArray(12))
+            DbIntRef::class -> DbIntRef<DbTableIntElement>()
+            DbStringRef::class -> DbStringRef<DbTableStringElement>()
+            DbIntKey::class -> DbIntKey(0L)
+            Date::class -> Date(0L)
+            LocalDate::class -> LocalDate.MIN
+            else -> {
+                if (jclazz.isEnum) {
+                    jclazz.enumConstants.first()
+                } else {
+                    val constructor = clazz.primaryConstructor ?: clazz.constructors.firstOrNull { it.isAccessible }
+                    ?: error("Class $clazz doesn't have public constructors")
+                    constructor.call(*constructor.valueParameters.map { createDefault(it.type) }.toTypedArray())
                 }
             }
         }
     }
+
+    private val typerForClassCacheJit = HashMap<KClass<*>, ClassTyper<*>>()
+    private val typerForClassCacheNoJit = HashMap<KClass<*>, ClassTyper<*>>()
+    fun <T : Any> typerForClass(clazz: KClass<T>, jit: Boolean = USE_JIT): ClassTyper<T> = when {
+        jit -> typerForClassCacheJit.getOrPut(clazz) { JitClassTyper(generateFactory, clazz) }
+        else -> typerForClassCacheNoJit.getOrPut(clazz) {
+            val ctyper = typersByClass[clazz]
+            if (ctyper != null) {
+                ReflectTyperClassTyper(this, clazz, ctyper)
+            } else {
+                ReflectClassTyper(this, clazz)
+            }
+
+        }
+    } as ClassTyper<T>
+}
+
+interface ClassTyper<T: Any> {
+    fun type(value: Any?): T
+    fun typeOrNull(value: Any?): T? = if (value == null) null else type(value)
+}
+
+class JitClassTyper<T: Any>(val factory: GenerateFactory, val clazz: KClass<T>) : ClassTyper<T> {
+    private val gen = factory.get(clazz)
+    override fun type(value: Any?): T = gen.convert(value)
+}
+
+class ReflectClassTyper<T: Any>(val typer: Typer, val clazz: KClass<T>) : ClassTyper<T> {
+    override fun type(value: Any?): T = typer.type<T>(value ?: Unit, clazz) as T
+}
+
+class ReflectTyperClassTyper<T: Any>(val typer: Typer, val clazz: KClass<T>, private val ctyper: ((Typer, Any, KType) -> Any)) : ClassTyper<T> {
+    private val ktype = clazz.starProjectedType
+    override fun type(value: Any?): T = ctyper(typer, value ?: Unit, ktype) as T
 }

@@ -46,7 +46,7 @@ class MemoryDbTable<T : DbTableBaseElement>(
     override val db: MemoryDb,
     override val clazz: KClass<T>,
     override val typer: Typer
-) : DbTable<T> {
+) : AbstractDbTable<T>() {
     val ormTableInfo = OrmTableInfo(clazz)
     val instances = arrayListOf<T>()
     val uniqueIndices = ormTableInfo.columnUniqueIndices.map { MemoryDbIndex(it.key, it.value) }

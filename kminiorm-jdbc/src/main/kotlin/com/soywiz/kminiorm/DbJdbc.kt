@@ -139,7 +139,7 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
     }
 }
 
-abstract class SqlTable<T : DbTableBaseElement> : DbTable<T>, DbQueryable, ColumnExtra {
+abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQueryable, ColumnExtra {
     abstract val table: DbJdbcTable<T>
     override val typer get() = table.db.typer
     private val _db get() = table.db

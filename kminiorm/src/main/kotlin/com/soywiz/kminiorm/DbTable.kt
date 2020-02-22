@@ -77,12 +77,17 @@ suspend fun <T : DbTableIntElement> DbIntRef<T>.resolved(table: DbTable<T>): T? 
 @JvmName("resolvedInt")
 suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(db: Db): T? = resolved(db.uninitializedTable(T::class))
 
+abstract class AbstractDbTable<T : DbTableBaseElement> : DbTable<T> {
+    override val typerForClass: ClassTyper<T> by lazy { typer.typerForClass(clazz) }
+}
+
 //interface DbTable<T : Any> {
 interface DbTable<T : DbTableBaseElement> {
     companion object
     val db: Db
     val clazz: KClass<T>
     val typer: Typer
+    val typerForClass: ClassTyper<T>
 
     fun <T> bindInstance(instance: T): T = db.bindInstance(instance)
 
@@ -92,7 +97,7 @@ interface DbTable<T : DbTableBaseElement> {
     suspend fun insert(instance: T): T
     suspend fun insert(instance: Partial<T>): DbResult = insert(instance.data)
     suspend fun insert(data: Map<String, Any?>): DbResult {
-        insert(typer.type(data, clazz))
+        insert(typerForClass.type(data))
         return DbResult(mapOf("insert" to 1))
     }
     suspend fun insertIgnore(value: T): Unit = run { kotlin.runCatching { insert(value) } }
@@ -100,7 +105,7 @@ interface DbTable<T : DbTableBaseElement> {
     // R
     suspend fun findFlowPartial(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<Partial<T>>
     suspend fun findFlow(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<T> = findFlowPartial(skip, limit, fields, sorted, query)
-        .map { bindInstance(typer.type(it.data, clazz)) }
+        .map { bindInstance(typerForClass.type(it.data)) }
     suspend fun find(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): List<T> = findFlow(skip, limit, fields, sorted, query).toList()
     suspend fun findAll(skip: Long? = null, limit: Long? = null): List<T> = find(skip = skip, limit = limit)
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query = query, limit = 1).firstOrNull()

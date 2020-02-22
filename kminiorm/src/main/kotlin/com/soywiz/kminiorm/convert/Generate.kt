@@ -192,11 +192,6 @@ abstract class Generate<T>(val clazz: KClass<*>, val factory: GenerateFactory) {
     fun ensureObject(value: Double): Any = value
 }
 
-data class Other3(val date: Map<String, Date>)
-data class Other2(val date: List<Date>)
-data class Other(val a: Int)
-data class MyClass(val clazz: MyClass?, val a: String, val b: String, val c: Int? = null, val other: Other)
-
 class GenerateConverters {
     internal val converters: MutableMap<KClass<*>, (value: Any?) -> Any> = LinkedHashMap()
 
@@ -258,7 +253,7 @@ open class GenerateFactory(
         override fun convert(data: Any?): T = block(data) as T
     }
 
-    fun <T : Any> get(clazz: KType): Generate<T> = this.get(clazz.jvmErasure as KClass<T>)
+    fun get(clazz: KType): Generate<Any> = this.get(clazz.jvmErasure as KClass<Any>)
     fun <T : Any> get(clazz: Class<T>): Generate<T> = this.get(clazz.kotlin)
     fun <T : Any> get(clazz: KClass<T>): Generate<T> = cache.getOrPut(clazz) {
         val converter = customConverters(clazz)
@@ -384,6 +379,7 @@ open class GenerateFactory(
 
             cc.addNewMethod {
                 appendln("protected void init() {")
+                //appendln("  super();")
                 for ((type, fieldName) in generatorFieldNames) {
                     if (type == clazz) {
                         appendln("  $fieldName = this;")
@@ -455,104 +451,124 @@ open class GenerateFactory(
     }
 }
 
-enum class MyEnum { A, B, C }
+object GenerateSample {
+    data class Other3(val date: Map<String, Date>)
+    data class Other2(val date: List<Date>)
+    data class Other(val a: Int)
+    data class MyClass(val clazz: MyClass?, val a: String, val b: String, val c: Int? = null, val other: Other)
+    enum class MyEnum { A, B, C }
 
-@UseExperimental(ExperimentalTime::class)
-fun main() {
-
-    val factory = GenerateFactory(
-        debug = true,
-        customConverters = { clazz ->
-            when (clazz) {
-                Date::class -> {
-                    {
-                        when (it) {
-                            is Number -> Date(it.toLong())
-                            is String -> Date(it)
-                            is Date -> it
-                            else -> Date(0L)
+    @JvmStatic
+    @UseExperimental(ExperimentalTime::class)
+    fun main(args: Array<String>) {
+        val factory = GenerateFactory(
+            debug = true,
+            customConverters = { clazz ->
+                when (clazz) {
+                    Date::class -> {
+                        {
+                            when (it) {
+                                is Number -> Date(it.toLong())
+                                is String -> Date(it)
+                                is Date -> it
+                                else -> Date(0L)
+                            }
                         }
                     }
-                }
-                LocalDate::class -> {
-                    {
-                        when (it) {
-                            is Number -> Date(it.toLong()).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
-                            is String -> LocalDate.parse(it)
-                            is LocalDate -> it
-                            else -> LocalDate.ofEpochDay(0L)
+                    LocalDate::class -> {
+                        {
+                            when (it) {
+                                is Number -> Date(it.toLong()).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
+                                is String -> LocalDate.parse(it)
+                                is LocalDate -> it
+                                else -> LocalDate.ofEpochDay(0L)
+                            }
                         }
                     }
-                }
-                else -> {
-                    null
+                    else -> {
+                        null
+                    }
                 }
             }
-        }
-    )
+        )
 
-    data class Demo(val date: Date, val demo: Demo?, val items: List<Int>, val list: IntArray, val map: Map<String, Long>)
-    //data class Demo(val date: Date, val demo: Demo?, val items: List<Int>, val list: IntArray)
+        data class Demo(val date: Date, val demo: Demo?, val items: List<Int>, val list: IntArray, val map: Map<String, Long>)
+        //data class Demo(val date: Date, val demo: Demo?, val items: List<Int>, val list: IntArray)
 
-    println(factory.createDefault<Byte>())
-    println(factory.createDefault<Boolean>())
-    println(factory.createDefault<Float>())
-    println(factory.createDefault<Double>())
-    println(factory.createDefault<Byte>())
-    println(factory.createDefault<Short>())
-    println(factory.createDefault<Char>())
-    println(factory.createDefault<Int>())
-    println(factory.createDefault<Long>())
-    println(factory.createDefault<String>())
-    println(factory.createDefault<List<Int>>())
-    println(factory.createDefault<Map<Int, String>>())
-    println(factory.createDefault<DbRef<*>>())
-    println(factory.createDefault<DbKey>())
-    println(factory.createDefault<DbIntRef<*>>())
-    println(factory.createDefault<DbStringRef<*>>())
-    println(factory.createDefault<DbIntKey>())
-    println(factory.createDefault<Date>())
-    println(factory.createDefault<LocalDate>())
-    //println(factory.get<Date>().convert(10000000000000L))
-    println(factory.get<Demo>().convert(mapOf(
-        "date" to 10000000000000L,
-        "map" to mapOf("hello" to "1000"),
-        "items" to listOf("1", 2, "3", true, false),
-        "list" to listOf("1", 2, "3", true, false),
-        "demo" to mapOf("date" to 1000))
-    ))
-    println(factory.get<String>().convertDefault())
-    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world")))
-    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to "test")))
-    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to "1000")))
-    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to 1000)))
-    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to 1000, "clazz" to mapOf("a" to "hello"))))
-    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to 1000, "clazz" to mapOf("a" to "hello"), "other" to mapOf("a" to 10))))
-    println(factory.get<MyClass>().convertFromMap(mapOf()))
-    println(factory.get<Other2>().convert(mapOf("date" to listOf(2000000000000L, 999999999999L))))
-    println(factory.get<Other3>().convert(mapOf("date" to mapOf("" to 2000000000000L))))
-    //MyEnum.values().first()
-    println(factory.get<Boolean>().convertDefault())
-    println(factory.get<Int>().convertDefault())
-    //println(factory.get<MyEnum>().createDefault())
-    println(factory.get<Boolean>().convert(true))
-    println(factory.get<Boolean>().convert(1))
-    println(factory.get<Int>().convert("hello"))
-    println(factory.get<Int>().convert("100"))
-    println(factory.get<MyEnum>().convertDefault())
-    println(factory.get<MyEnum>().convert(null))
-    println(factory.get<MyEnum>().convert(MyEnum.B))
-    println(factory.get<MyEnum>().convert("C"))
-    println(factory.get<String>().convert(10))
-    println(factory.get<String>().convert(null))
-    println(factory.get<String>().convert(true))
-    println(factory.get<String>().convert(false))
-    println(factory.get<String>().convert("hello"))
-    println(factory.get<String>().convert(mapOf("a" to "b")))
-    /*
+        println(factory.createDefault<Byte>())
+        println(factory.createDefault<Boolean>())
+        println(factory.createDefault<Float>())
+        println(factory.createDefault<Double>())
+        println(factory.createDefault<Byte>())
+        println(factory.createDefault<Short>())
+        println(factory.createDefault<Char>())
+        println(factory.createDefault<Int>())
+        println(factory.createDefault<Long>())
+        println(factory.createDefault<String>())
+        println(factory.createDefault<List<Int>>())
+        println(factory.createDefault<Map<Int, String>>())
+        println(factory.createDefault<DbRef<*>>())
+        println(factory.createDefault<DbKey>())
+        println(factory.createDefault<DbIntRef<*>>())
+        println(factory.createDefault<DbStringRef<*>>())
+        println(factory.createDefault<DbIntKey>())
+        println(factory.createDefault<Date>())
+        println(factory.createDefault<LocalDate>())
+        //println(factory.get<Date>().convert(10000000000000L))
+        println(
+            factory.get<Demo>().convert(
+                mapOf(
+                    "date" to 10000000000000L,
+                    "map" to mapOf("hello" to "1000"),
+                    "items" to listOf("1", 2, "3", true, false),
+                    "list" to listOf("1", 2, "3", true, false),
+                    "demo" to mapOf("date" to 1000)
+                )
+            )
+        )
+        println(factory.get<String>().convertDefault())
+        println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world")))
+        println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to "test")))
+        println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to "1000")))
+        println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to 1000)))
+        println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to 1000, "clazz" to mapOf("a" to "hello"))))
+        println(
+            factory.get<MyClass>().convert(
+                mapOf(
+                    "a" to "hello",
+                    "b" to "world",
+                    "c" to 1000,
+                    "clazz" to mapOf("a" to "hello"),
+                    "other" to mapOf("a" to 10)
+                )
+            )
+        )
+        println(factory.get<MyClass>().convertFromMap(mapOf()))
+        println(factory.get<Other2>().convert(mapOf("date" to listOf(2000000000000L, 999999999999L))))
+        println(factory.get<Other3>().convert(mapOf("date" to mapOf("" to 2000000000000L))))
+        //MyEnum.values().first()
+        println(factory.get<Boolean>().convertDefault())
+        println(factory.get<Int>().convertDefault())
+        //println(factory.get<MyEnum>().createDefault())
+        println(factory.get<Boolean>().convert(true))
+        println(factory.get<Boolean>().convert(1))
+        println(factory.get<Int>().convert("hello"))
+        println(factory.get<Int>().convert("100"))
+        println(factory.get<MyEnum>().convertDefault())
+        println(factory.get<MyEnum>().convert(null))
+        println(factory.get<MyEnum>().convert(MyEnum.B))
+        println(factory.get<MyEnum>().convert("C"))
+        println(factory.get<String>().convert(10))
+        println(factory.get<String>().convert(null))
+        println(factory.get<String>().convert(true))
+        println(factory.get<String>().convert(false))
+        println(factory.get<String>().convert("hello"))
+        println(factory.get<String>().convert(mapOf("a" to "b")))
+        /*
     val mapper = ObjectMapper()
     mapper.registerModule(KotlinModule())
     mapper.registerModule(AfterburnerModule())
     mapper.convertValue(mapOf("date" to listOf(Date(), Date())), Other3::class.java)
      */
+    }
 }
