@@ -1,6 +1,8 @@
 package com.soywiz.kminiorm.typer
 
 import com.soywiz.kminiorm.*
+import java.time.*
+import java.util.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.test.*
@@ -106,6 +108,29 @@ class TyperTest {
     @Test
     fun testDbKeyTyper() {
         assertEquals("100", DbTyper.type<DbIntKey>(100).toString())
+    }
+
+    @Test
+    fun testDefault() {
+        assertNotNull(DbTyper.createDefault<Byte>())
+        assertNotNull(DbTyper.createDefault<Boolean>())
+        assertNotNull(DbTyper.createDefault<Float>())
+        assertNotNull(DbTyper.createDefault<Double>())
+        assertNotNull(DbTyper.createDefault<Byte>())
+        assertNotNull(DbTyper.createDefault<Short>())
+        assertNotNull(DbTyper.createDefault<Char>())
+        assertNotNull(DbTyper.createDefault<Int>())
+        assertNotNull(DbTyper.createDefault<Long>())
+        assertNotNull(DbTyper.createDefault<String>())
+        assertNotNull(DbTyper.createDefault<List<Int>>())
+        assertNotNull(DbTyper.createDefault<Map<Int, String>>())
+        assertNotNull(DbTyper.createDefault<DbRef<*>>())
+        assertNotNull(DbTyper.createDefault<DbKey>())
+        assertNotNull(DbTyper.createDefault<DbIntRef<*>>())
+        assertNotNull(DbTyper.createDefault<DbStringRef<*>>())
+        assertNotNull(DbTyper.createDefault<DbIntKey>())
+        assertNotNull(DbTyper.createDefault<Date>())
+        assertNotNull(DbTyper.createDefault<LocalDate>())
     }
 
     data class Mixed(val list: List<Compound>) {

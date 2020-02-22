@@ -1,6 +1,7 @@
 package com.soywiz.kminiorm.typer
 
 import com.soywiz.kminiorm.*
+import com.soywiz.kminiorm.convert.*
 import com.soywiz.kminiorm.internal.*
 import java.math.*
 import java.time.*
@@ -198,11 +199,14 @@ open class Typer private constructor(
 
     private val generateFactory by lazy { GenerateFactory() }
 
+    @UseExperimental(ExperimentalStdlibApi::class)
+    inline fun <reified T> createDefault(): Any? = createDefault(typeOf<T>())
+
     fun createDefault(type: KType): Any? {
         if (type.isMarkedNullable) return null
-        //if (true) {
-        if (false) {
-            return generateFactory.get(type.jvmErasure.java).convertFromMap(mapOf())
+        if (true) {
+        //if (false) {
+            return generateFactory.get(type.jvmErasure.java).convertDefault()
         } else {
             val clazz = type.jvmErasure
             val jclazz = clazz.java

@@ -1,7 +1,9 @@
-package com.soywiz.kminiorm.typer
+package com.soywiz.kminiorm.convert
 
+import com.soywiz.kminiorm.*
 import javassist.*
 import java.lang.reflect.Modifier
+import java.time.*
 import java.util.*
 import java.util.concurrent.atomic.*
 import kotlin.collections.HashMap
@@ -28,13 +30,6 @@ abstract class Generate<T>(val clazz: KClass<*>, val factory: GenerateFactory) {
     open fun convertFromMap(data: Map<String?, Any?>): T = this.convert(data)
 
     fun ensureUnit(value: Any?, allowNull: Boolean) = if (allowNull && value == null) null else Unit
-
-    fun ensureDate(value: Any?, allowNull: Boolean): Date? = when(value) {
-        null -> if (allowNull) null else Date()
-        is Date -> value
-        is Number -> Date(value.toLong())
-        else -> Date(Date.parse(value.toString()))
-    }
 
     fun ensureBoolean(value: Any?, allowNull: Boolean): Boolean? = when(value) {
         null -> if (allowNull) null else false
@@ -166,10 +161,7 @@ abstract class Generate<T>(val clazz: KClass<*>, val factory: GenerateFactory) {
         val clazzFactory = factory.get(clazz)
         val list = value as List<*>
 
-        return when (clazz) {
-            //Date::class.java -> MutableList(list.size) { clazzFactory.ensureDate(list[it], false) } as List<T>
-            else -> MutableList(list.size) { clazzFactory.convert(list[it]) } as List<T>
-        }
+        return MutableList(list.size) { clazzFactory.convert(list[it]) } as List<T>
     }
 
     fun <T : Any> generateListForGenerator(clazzFactory: Generate<T>, value: Any?, allowNull: Boolean): List<T>? {
@@ -232,18 +224,45 @@ open class GenerateFactory(
 
     inline fun <reified T : Any> get(): Generate<T> = get(T::class)
 
+    inline fun <reified T : Any> createGenerate(noinline block: (data: Any?) -> T): Generate<T> = createGenerate(T::class, block)
+    fun <T : Any> createGenerate(clazz: KClass<T>, block: (data: Any?) -> T): Generate<T> = object : Generate<T>(clazz, this@GenerateFactory) {
+        override fun convert(data: Any?): T = block(data) as T
+    }
+
+    fun <T : Any> get(clazz: KType): Generate<T> = this.get(clazz.jvmErasure as KClass<T>)
     fun <T : Any> get(clazz: Class<T>): Generate<T> = this.get(clazz.kotlin)
     fun <T : Any> get(clazz: KClass<T>): Generate<T> = cache.getOrPut(clazz) {
         val converter = customConverters(clazz)
-        if (converter != null) {
-            if (debug) {
-                System.err.println("Custom converter for class $clazz")
+        when {
+            converter != null -> {
+                if (debug) {
+                    System.err.println("Custom converter for class $clazz")
+                }
+                createGenerate(clazz) { converter(it) as T }
             }
-            object : Generate<T>(clazz, this@GenerateFactory) {
-                override fun convert(data: Any?): T = converter(data) as T
+            clazz == Date::class -> {
+                createGenerate(clazz as KClass<Date>) {
+                    when (it) {
+                        is Number -> Date(it.toLong())
+                        is String -> Date(it)
+                        is Date -> it
+                        else -> Date(0L)
+                    }
+                }
             }
-        } else {
-            GenerateClass(clazz).generateUncached()
+            clazz == LocalDate::class -> {
+                createGenerate(clazz as KClass<LocalDate>) {
+                    when (it) {
+                        is Number -> Date(it.toLong()).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
+                        is String -> LocalDate.parse(it)
+                        is LocalDate -> it
+                        else -> LocalDate.ofEpochDay(0L)
+                    }
+                }
+            }
+            else -> {
+                GenerateClass(clazz).generateUncached()
+            }
         }
     } as Generate<T>
 
@@ -265,13 +284,17 @@ open class GenerateFactory(
         cc.addMethod(CtNewMethod.make(body, cc))
     }
 
+    inline fun <reified T : Any> createDefault(): T = get(T::class.java).convertDefault()
+
     inner class GenerateClass<T : Any>(val clazz: KClass<T>) {
         val cc = pool.makeClass("___Generate${id.getAndIncrement()}", pool.getCtClass(Generate::class.java.name))
         val clazzFQName = clazz.java.name
-        val constructor = clazz.primaryConstructor
-            ?: clazz.constructors.filter { Modifier.isPublic(it.javaConstructor?.modifiers ?: 0) }.sortedBy { it.parameters.size }.firstOrNull()
-            //?: clazz.constructors.first()
-            ?: error("Class $clazz doesn't have public constructors")
+        val constructor by lazy {
+            clazz.primaryConstructor
+                ?: clazz.constructors.filter { Modifier.isPublic(it.javaConstructor?.modifiers ?: 0) }.sortedBy { it.parameters.size }.firstOrNull()
+                //?: clazz.constructors.first()
+                ?: error("Class $clazz doesn't have public constructors")
+        }
         var lastMethodId = 0
         var lastFieldId = 0
         val generatorFieldNames = LinkedHashMap<KClass<*>, String>()
@@ -312,6 +335,13 @@ open class GenerateFactory(
                         appendln("$convertDesc {")
                         appendln("  if ($PARAM == null) return \"\";");
                         appendln("  return $PARAM.toString();");
+                        appendln("}")
+                    }
+                }
+                clazz.isSubclassOf(List::class) || clazz.isSubclassOf(Map::class) -> {
+                    cc.addNewMethod {
+                        appendln("$convertDesc {")
+                        appendln("  return ${castAnyToType(PARAM, clazz.starProjectedType)};");
                         appendln("}")
                     }
                 }
@@ -388,12 +418,12 @@ open class GenerateFactory(
                 else -> {
                     when {
                         Map::class.java.isAssignableFrom(clazz) -> {
-                            val elementClassK = type.arguments.first().type!!.jvmErasure.java
-                            val elementClassV = type.arguments.drop(1).first().type!!.jvmErasure.java
+                            val elementClassK = type.arguments.getOrNull(0)?.type?.jvmErasure?.java ?: Any::class.java
+                            val elementClassV = type.arguments.getOrNull(1)?.type?.jvmErasure?.java ?: Any::class.java
                             "($clazzName)generateMapForClass(${elementClassK.name}.class, ${elementClassV.name}.class, $obj, $allowNull)"
                         }
                         List::class.java.isAssignableFrom(clazz) -> {
-                            val elementType = type.arguments.first().type!!
+                            val elementType = type.arguments.getOrNull(0)?.type ?: Any::class.starProjectedType
                             val elementClass = elementType.jvmErasure
                             "($clazzName)generateListForGenerator(${getGeneratorFieldName(elementClass)}, $obj, $allowNull)"
                         }
@@ -404,29 +434,6 @@ open class GenerateFactory(
                         else -> {
                             "($clazzName)${getGeneratorFieldName(clazz.kotlin)}.convert$OrNull($obj)"
                         }
-                    }
-                }
-            }
-        }
-
-        fun defaultLiteralString(type: KType): String {
-            if (type.isMarkedNullable) return "null"
-            return defaultLiteralString(type.jvmErasure.java)
-        }
-
-        fun defaultLiteralString(clazz: Class<*>): String {
-            return when (clazz) {
-                Boolean::class.javaPrimitiveType -> "false"
-                Int::class.javaPrimitiveType -> "0"
-                Float::class.javaPrimitiveType -> "0f"
-                Double::class.javaPrimitiveType -> "0.0"
-                String::class.javaObjectType -> "\"\""
-                Date::class.javaObjectType -> "new java.util.Date()"
-                else -> {
-                    when {
-                        clazz.isAssignableFrom(Map::class.java) -> "new java.util.HashMap()"
-                        clazz.isAssignableFrom(List::class.java) -> "new java.util.List()"
-                        else -> TODO("$clazz")
                     }
                 }
             }
@@ -442,27 +449,65 @@ fun main() {
     val factory = GenerateFactory(
         debug = true,
         customConverters = { clazz ->
-            if (clazz == Date::class) {
-                {
-                    when (it) {
-                        is Number -> Date(it.toLong())
-                        is String -> Date(it)
-                        is Date -> it
-                        else -> Date(0L)
+            when (clazz) {
+                Date::class -> {
+                    {
+                        when (it) {
+                            is Number -> Date(it.toLong())
+                            is String -> Date(it)
+                            is Date -> it
+                            else -> Date(0L)
+                        }
                     }
                 }
-            } else {
-                null
+                LocalDate::class -> {
+                    {
+                        when (it) {
+                            is Number -> Date(it.toLong()).toInstant().atZone(ZoneId.of("UTC")).toLocalDate()
+                            is String -> LocalDate.parse(it)
+                            is LocalDate -> it
+                            else -> LocalDate.ofEpochDay(0L)
+                        }
+                    }
+                }
+                else -> {
+                    null
+                }
             }
         }
     )
 
-    data class Demo(val date: Date, val demo: Demo?, val items: List<Int>, val list: IntArray)
+    data class Demo(val date: Date, val demo: Demo?, val items: List<Int>, val list: IntArray, val map: Map<String, Long>)
     //data class Demo(val date: Date, val demo: Demo?, val items: List<Int>, val list: IntArray)
 
+    println(factory.createDefault<Byte>())
+    println(factory.createDefault<Boolean>())
+    println(factory.createDefault<Float>())
+    println(factory.createDefault<Double>())
+    println(factory.createDefault<Byte>())
+    println(factory.createDefault<Short>())
+    println(factory.createDefault<Char>())
+    println(factory.createDefault<Int>())
+    println(factory.createDefault<Long>())
+    println(factory.createDefault<String>())
+    println(factory.createDefault<List<Int>>())
+    println(factory.createDefault<Map<Int, String>>())
+    println(factory.createDefault<DbRef<*>>())
+    println(factory.createDefault<DbKey>())
+    println(factory.createDefault<DbIntRef<*>>())
+    println(factory.createDefault<DbStringRef<*>>())
+    println(factory.createDefault<DbIntKey>())
+    println(factory.createDefault<Date>())
+    println(factory.createDefault<LocalDate>())
     //println(factory.get<Date>().convert(10000000000000L))
-    println(factory.get<Demo>().convert(mapOf("date" to 10000000000000L, "items" to listOf("1", 2, "3", true, false), "list" to listOf("1", 2, "3", true, false), "demo" to mapOf("date" to 1000))))
-    /*
+    println(factory.get<Demo>().convert(mapOf(
+        "date" to 10000000000000L,
+        "map" to mapOf("hello" to "1000"),
+        "items" to listOf("1", 2, "3", true, false),
+        "list" to listOf("1", 2, "3", true, false),
+        "demo" to mapOf("date" to 1000))
+    ))
+    println(factory.get<String>().convertDefault())
     println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world")))
     println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to "test")))
     println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to "1000")))
@@ -472,21 +517,15 @@ fun main() {
     println(factory.get<MyClass>().convertFromMap(mapOf()))
     println(factory.get<Other2>().convert(mapOf("date" to listOf(2000000000000L, 999999999999L))))
     println(factory.get<Other3>().convert(mapOf("date" to mapOf("" to 2000000000000L))))
-     */
-    /*
-    */
     //MyEnum.values().first()
-    /*
-    println(factory.get<Boolean>().generateDefault())
-    println(factory.get<Int>().generateDefault())
-     */
-    //println(factory.get<MyEnum>().generateDefault())
-    /*
+    println(factory.get<Boolean>().convertDefault())
+    println(factory.get<Int>().convertDefault())
+    //println(factory.get<MyEnum>().createDefault())
     println(factory.get<Boolean>().convert(true))
     println(factory.get<Boolean>().convert(1))
     println(factory.get<Int>().convert("hello"))
     println(factory.get<Int>().convert("100"))
-    println(factory.get<MyEnum>().generateDefault())
+    println(factory.get<MyEnum>().convertDefault())
     println(factory.get<MyEnum>().convert(null))
     println(factory.get<MyEnum>().convert(MyEnum.B))
     println(factory.get<MyEnum>().convert("C"))
@@ -496,7 +535,6 @@ fun main() {
     println(factory.get<String>().convert(false))
     println(factory.get<String>().convert("hello"))
     println(factory.get<String>().convert(mapOf("a" to "b")))
-    */
     /*
     val mapper = ObjectMapper()
     mapper.registerModule(KotlinModule())

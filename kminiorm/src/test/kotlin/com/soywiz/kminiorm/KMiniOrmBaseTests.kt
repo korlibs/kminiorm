@@ -104,6 +104,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         val tableV2 = db.table<TableV2>()
         tableV1.deleteAll()
         val row1 = tableV1.insert(TableV1("hello", "world"))
+        val row1b = tableV1.findOne { TableV1::name eq "hello" }
         val row2 = tableV2.findOne { TableV2::name eq "hello" }
         assertEquals("hello", row2?.name)
         assertEquals("", row2?.fieldV2)
