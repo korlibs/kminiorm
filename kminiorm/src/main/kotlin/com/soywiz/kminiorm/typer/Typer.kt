@@ -202,7 +202,7 @@ open class Typer private constructor(
         if (type.isMarkedNullable) return null
         //if (true) {
         if (false) {
-            return generateFactory.get(type.jvmErasure.java).generateFromMap(mapOf())
+            return generateFactory.get(type.jvmErasure.java).convertFromMap(mapOf())
         } else {
             val clazz = type.jvmErasure
             val jclazz = clazz.java

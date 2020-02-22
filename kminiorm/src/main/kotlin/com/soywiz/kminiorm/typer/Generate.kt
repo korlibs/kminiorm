@@ -1,6 +1,5 @@
 package com.soywiz.kminiorm.typer
 
-import com.sun.org.apache.xpath.internal.operations.*
 import javassist.*
 import java.lang.reflect.Modifier
 import java.util.*
@@ -13,22 +12,12 @@ import kotlin.time.*
 
 @Suppress("unused", "SameParameterValue")
 abstract class Generate<T>(val clazz: KClass<*>, val factory: GenerateFactory) {
-    fun generateDefault(): T? = generateFromMap(mapOf())
+    fun convertDefault(): T = this.convert(null)
+    fun convertOrNull(value: Any?): T? = value?.let { this.convert(value) }
+    abstract fun convert(data: Any?): T
 
-    fun generate(value: Any?): T? {
-        if (value == null) return null
-        if (value is Map<*, *>) return generateFromMap(value as Map<String?, Any?>)
-        if (clazz.isInstance(value)) return value as T
-        if (clazz == Date::class) return ensureDate(value, true) as T?
-        TODO("generate $clazz, $value")
-    }
-
-    fun generateNotNull(value: Any?): T = if (value == null) generateFromMap(mapOf()) else generate(value)!!
-
-    fun generateFromMapOrNull(data: Map<String?, Any?>?): T? = data?.let { generateFromMap(data) }
-    abstract fun generateFromMap(data: Map<String?, Any?>): T
-
-    fun <T> getDefault(value: T?, default: T): T = value ?: default
+    fun convertFromMapOrNull(data: Map<String?, Any?>?): T? = data?.let { convertFromMap(data) }
+    open fun convertFromMap(data: Map<String?, Any?>): T = this.convert(data)
 
     fun ensureUnit(value: Any?, allowNull: Boolean) = if (allowNull && value == null) null else Unit
 
@@ -105,7 +94,7 @@ abstract class Generate<T>(val clazz: KClass<*>, val factory: GenerateFactory) {
         val clazzFactoryK = factory.get(clazzK)
         val clazzFactoryV = factory.get(clazzV)
         val map = (value as Map<*, *>)
-        return map.map { clazzFactoryK.generate(it.key) to clazzFactoryV.generate(it.value) }.toMap().toMutableMap() as Map<K, V>
+        return map.map { clazzFactoryK.convert(it.key) to clazzFactoryV.convert(it.value) }.toMap().toMutableMap() as Map<K, V>
     }
 
     fun <T : Any> generateListForClass(clazz: Class<T>, value: Any?, allowNull: Boolean): List<T>? {
@@ -115,14 +104,24 @@ abstract class Generate<T>(val clazz: KClass<*>, val factory: GenerateFactory) {
 
         return when (clazz) {
             //Date::class.java -> MutableList(list.size) { clazzFactory.ensureDate(list[it], false) } as List<T>
-            else -> MutableList(list.size) { clazzFactory.generate(list[it]) } as List<T>
+            else -> MutableList(list.size) { clazzFactory.convert(list[it]) } as List<T>
         }
     }
 
     fun <T : Any> generateForClass(clazz: Class<T>, value: Any?, allowNull: Boolean): T? {
-        if (value == null) return if (allowNull) null else factory.get(clazz).generateNotNull(value) as T
-        return factory.get(clazz).generate(value) as T
+        if (value == null) return if (allowNull) null else factory.get(clazz).convert(value) as T
+        return factory.get(clazz).convert(value) as T
     }
+
+    fun ensureObject(value: Any?): Any? = value
+    fun ensureObject(value: Boolean): Any = value
+    fun ensureObject(value: Byte): Any = value
+    fun ensureObject(value: Char): Any = value
+    fun ensureObject(value: Short): Any = value
+    fun ensureObject(value: Int): Any = value
+    fun ensureObject(value: Long): Any = value
+    fun ensureObject(value: Float): Any = value
+    fun ensureObject(value: Double): Any = value
 }
 
 data class Other3(val date: Map<String, Date>)
@@ -139,56 +138,96 @@ open class GenerateFactory(
     private val pool = ClassPool.getDefault()
     private val cache = HashMap<KClass<*>, Generate<*>>()
     private val PARAM: String = "data"
+    //private val ENSURE_OBJECT = Generate<*>::ensureObject.name
+    private val ENSURE_OBJECT = "ensureObject"
+
+    val convertName = Generate<*>::convert.name
+    val convertFromMapName = Generate<*>::convertFromMap.name
+
+    val convertDesc = "public Object ${convertName}(Object $PARAM)"
+    val convertFromMapDesc = "public Object ${convertFromMapName}(java.util.Map $PARAM)"
+
+    private val primitiveClasses = setOf(
+        Boolean::class, Byte::class, Char::class,
+        Short::class, Int::class, Long::class,
+        Float::class, Double::class
+    )
 
     inline fun <reified T : Any> get(): Generate<T> = get(T::class)
 
     fun <T : Any> get(clazz: Class<T>): Generate<T> = this.get(clazz.kotlin)
     fun <T : Any> get(clazz: KClass<T>): Generate<T> = cache.getOrPut(clazz) { GenerateClass(clazz).generateUncached() } as Generate<T>
 
+    fun CtClass.addNewMethod(build: StringBuilder.() -> Unit) {
+        val cc = this
+        val body = StringBuilder().apply(build).toString()
+        if (debug) {
+            System.err.println(body)
+        }
+        cc.addMethod(CtNewMethod.make(body, cc))
+    }
+
     inner class GenerateClass<T : Any>(val clazz: KClass<T>) {
+        val clazzFQName = clazz.qualifiedName
+
         fun generateUncached(): Generate<T> {
             val constructor = clazz.primaryConstructor
                 ?: clazz.constructors.filter { Modifier.isPublic(it.javaConstructor?.modifiers ?: 0) }.sortedBy { it.parameters.size }.firstOrNull()
                 //?: clazz.constructors.first()
                 ?: error("Class $clazz doesn't have public constructors")
 
-            val clazzFQName = clazz.qualifiedName
             val cc = pool.makeClass("___Generate${id.getAndIncrement()}", pool.getCtClass(Generate::class.java.name))
-            val body = buildString {
-                appendln("public Object ${Generate<*>::generateFromMap.name}(java.util.Map $PARAM) {")
-                run {
-                    when {
-                        clazz == Boolean::class -> appendln("return java.lang.Boolean.FALSE;")
-                        clazz == String::class -> appendln("return data.toString();")
-                        clazz == Byte::class -> appendln("return java.lang.Byte.valueOf(0);")
-                        clazz == Char::class -> appendln("return java.lang.Character.valueOf(' ');")
-                        clazz == Short::class -> appendln("return java.lang.Short.valueOf(0);")
-                        clazz == Int::class -> appendln("return java.lang.Integer.valueOf(0);")
-                        clazz == Long::class -> appendln("return java.lang.Long.valueOf(0L);")
-                        clazz == Float::class -> appendln("return java.lang.Float.valueOf(0f);")
-                        clazz == Double::class -> appendln("return java.lang.Double.valueOf(0.0);")
-                        clazz.java.isEnum -> appendln("return $clazzFQName.values()[0];")
-                        else -> {
+
+            when {
+                clazz.java.isPrimitive || clazz in primitiveClasses -> {
+                    cc.addNewMethod {
+                        appendln("$convertDesc {")
+                        appendln("  return $ENSURE_OBJECT(" + castAnyToType(PARAM, clazz.starProjectedType) + ");");
+                        appendln("}")
+                    }
+                }
+                clazz.java.isEnum -> {
+                    cc.addNewMethod {
+                        appendln("$convertDesc {")
+                        appendln("  if ($PARAM != null) {");
+                        appendln("    if ($PARAM instanceof $clazzFQName) return ($clazzFQName)$PARAM;");
+                        appendln("    if ($PARAM instanceof String) return $clazzFQName.valueOf((String)$PARAM);");
+                        appendln("  }");
+                        appendln("  return $clazzFQName.values()[0];");
+                        appendln("}")
+                    }
+                }
+                clazz == String::class -> {
+                    cc.addNewMethod {
+                        appendln("$convertDesc {")
+                        appendln("  if ($PARAM == null) return \"\";");
+                        appendln("  return $PARAM.toString();");
+                        appendln("}")
+                    }
+                }
+                else -> {
+                    cc.addNewMethod {
+                        appendln("$convertFromMapDesc {")
+                        run {
                             appendln("return new $clazzFQName(")
                             appendln(constructor.valueParameters.joinToString(", ") { param ->
-                                val paramClazz = param.type.jvmErasure
-                                val accessor = "($PARAM.get(\"${param.name}\"))"
-                                //if (paramClazz == clazz) {
-                                //    "(${clazz.java.name})${Generate<*>::generate.name}($accessor)"
-                                //} else {
-                                castAnyToType(accessor, param.type)
-                                //}
+                                castAnyToType("($PARAM.get(\"${param.name}\"))", param.type)
                             })
                             appendln(");")
                         }
+                        appendln("}")
+                    }
+                    cc.addNewMethod {
+                        appendln("$convertDesc {")
+                        run {
+                            appendln("if ($PARAM instanceof java.util.Map) return $convertFromMapName((java.util.Map)$PARAM);")
+                            appendln("return $convertFromMapName(new java.util.LinkedHashMap());")
+                        }
+                        //appendln("return $ENSURE_OBJECT(" + castAnyToType(PARAM, clazz.starProjectedType) + ");");
+                        appendln("}")
                     }
                 }
-                appendln("}")
             }
-            if (debug) {
-                println(body)
-            }
-            cc.addMethod(CtNewMethod.make(body, cc))
             return cc.toClass().declaredConstructors.first().newInstance(clazz, this@GenerateFactory) as Generate<T>
         }
 
@@ -210,7 +249,6 @@ open class GenerateFactory(
                 Long::class.javaPrimitiveType, Long::class.javaObjectType -> gen2(Generate<*>::ensureLong, Generate<*>::ensureLongNotNull)
                 String::class.javaObjectType -> gen(Generate<*>::ensureString)
                 Date::class.javaObjectType -> gen(Generate<*>::ensureDate)
-                //else -> "(${clazz.name})getDefault($obj, ${defaultLiteralString(type)})"
                 else -> {
                     when {
                         Map::class.java.isAssignableFrom(clazz) -> {
@@ -259,23 +297,41 @@ enum class MyEnum { A, B, C }
 
 @UseExperimental(ExperimentalTime::class)
 fun main() {
-    val factory = GenerateFactory()
+
+    val factory = GenerateFactory(debug = true)
+    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world")))
+    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to "test")))
+    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to "1000")))
+    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to 1000)))
+    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to 1000, "clazz" to mapOf("a" to "hello"))))
+    println(factory.get<MyClass>().convert(mapOf("a" to "hello", "b" to "world", "c" to 1000, "clazz" to mapOf("a" to "hello"), "other" to mapOf("a" to 10))))
+    println(factory.get<MyClass>().convertFromMap(mapOf()))
+    println(factory.get<Other2>().convert(mapOf("date" to listOf(2000000000000L, 999999999999L))))
+    println(factory.get<Other3>().convert(mapOf("date" to mapOf("" to 2000000000000L))))
     /*
-    println(factory.get<MyClass>().generate(mapOf("a" to "hello", "b" to "world")))
-    println(factory.get<MyClass>().generate(mapOf("a" to "hello", "b" to "world", "c" to "test")))
-    println(factory.get<MyClass>().generate(mapOf("a" to "hello", "b" to "world", "c" to "1000")))
-    println(factory.get<MyClass>().generate(mapOf("a" to "hello", "b" to "world", "c" to 1000)))
-    println(factory.get<MyClass>().generate(mapOf("a" to "hello", "b" to "world", "c" to 1000, "clazz" to mapOf("a" to "hello"))))
-    println(factory.get<MyClass>().generate(mapOf("a" to "hello", "b" to "world", "c" to 1000, "clazz" to mapOf("a" to "hello"), "other" to mapOf("a" to 10))))
-    println(factory.get<MyClass>().generateFromMap(mapOf()))
-    println(factory.get<Other2>().generateFromMap(mapOf("date" to listOf(2000000000000L, 999999999999L))))
-    println(factory.get<Other3>().generateFromMap(mapOf("date" to mapOf("" to 2000000000000L))))
     */
     //MyEnum.values().first()
+    /*
     println(factory.get<Boolean>().generateDefault())
     println(factory.get<Int>().generateDefault())
+     */
+    //println(factory.get<MyEnum>().generateDefault())
+    /*
+    println(factory.get<Boolean>().convert(true))
+    println(factory.get<Boolean>().convert(1))
+    println(factory.get<Int>().convert("hello"))
+    println(factory.get<Int>().convert("100"))
     println(factory.get<MyEnum>().generateDefault())
-
+    println(factory.get<MyEnum>().convert(null))
+    println(factory.get<MyEnum>().convert(MyEnum.B))
+    println(factory.get<MyEnum>().convert("C"))
+    println(factory.get<String>().convert(10))
+    println(factory.get<String>().convert(null))
+    println(factory.get<String>().convert(true))
+    println(factory.get<String>().convert(false))
+    println(factory.get<String>().convert("hello"))
+    println(factory.get<String>().convert(mapOf("a" to "b")))
+    */
     /*
     val mapper = ObjectMapper()
     mapper.registerModule(KotlinModule())
