@@ -61,12 +61,11 @@ open class Typer private constructor(
                 when {
                     clazz.java.isEnum -> (instance as Enum<*>).name
                     else -> LinkedHashMap<String, Any?>().also { out ->
-                        for (prop in clazz.memberProperties
-                            .filter {
-                                it.isAccessible = true
-                                !it.hasAnnotation<DbIgnore>() && !it.isLateinit
-                            }) {
-                            out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)?.let { untype(it) }
+                        for (prop in clazz.memberPropertiesCached) {
+                            prop.isAccessible = true
+                            if (!prop.hasAnnotation<DbIgnore>() && !prop.isLateinit) {
+                                out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)?.let { untype(it) }
+                            }
                         }
                     }
                 }
@@ -89,10 +88,11 @@ open class Typer private constructor(
         if (instance == null) return LinkedHashMap()
         if (instance is Map<*, *>) return instance as Map<Any?, Any?>
         if (instance is Iterable<*>) return (instance as Iterable<Map.Entry<Any?, Any?>>).toList().associate { it.key to it.value }
-        return instance::class.memberProperties
-            //.filter { it.isAccessible = true; true }
-            .filter { it.isAccessible }
-            .associate { it.name to (it as KProperty1<Any?, Any?>).get(instance) }
+
+        val props = instance::class.memberPropertiesAccessibleCached
+        val out = LinkedHashMap<Any?, Any?>(props.size)
+        for (prop in props) out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)
+        return out
     }
 
     inline fun <reified T> type(instance: Any?): T = type(instance, typeOf<T>())
@@ -101,6 +101,34 @@ open class Typer private constructor(
 
     private fun _type(instance: Any?, targetType: KType): Any? = if (USE_JIT) _typeJit(instance, targetType) else _typeReflection(instance, targetType)
     private fun _typeJit(instance: Any?, targetType: KType): Any? = generateFactory.get(targetType).convert(instance)
+
+    private val subClassCacheNumber = HashMap<KClass<*>, Boolean>()
+    private val subClassCacheMap = HashMap<KClass<*>, Boolean>()
+    private val subClassCacheIterable = HashMap<KClass<*>, Boolean>()
+    private val subClassCacheList = HashMap<KClass<*>, Boolean>()
+    private val subClassCacheSet = HashMap<KClass<*>, Boolean>()
+
+    private val primaryConstructorCache = HashMap<KClass<*>, KFunction<*>>()
+    private val <T : Any> KClass<T>.primaryConstructorCached: KFunction<*>
+        get() = primaryConstructorCache.getOrPut(this) {
+            this.primaryConstructor
+                ?: constructors.firstOrNull { it.isAccessible && it.parameters.isNotEmpty() }
+                ?: constructors.firstOrNull { it.isAccessible }
+                ?: constructors.firstOrNull()
+                ?: error("Class $this doesn't have public constructors")
+        }
+
+    private val propertiesCache = HashMap<KClass<*>, List<KProperty1<*, *>>>()
+    private val <T : Any> KClass<T>.memberPropertiesCached: List<KProperty1<T, *>>
+        get() = propertiesCache.getOrPut(this) { this.memberProperties.toList() } as List<KProperty1<T, *>>
+
+    private val propertiesAccessibleCache = HashMap<KClass<*>, List<KProperty1<*, *>>>()
+    private val <T : Any> KClass<T>.memberPropertiesAccessibleCached: List<KProperty1<T, *>>
+        get() = propertiesAccessibleCache.getOrPut(this) { this.memberPropertiesCached.filter { it.isAccessible } } as List<KProperty1<T, *>>
+
+    private val mutablePropertiesCache = HashMap<KClass<*>, List<KMutableProperty1<*, *>>>()
+    private val <T : Any> KClass<T>.memberMutablePropertiesCached: List<KMutableProperty1<T, *>>
+        get() = mutablePropertiesCache.getOrPut(this) { this.memberPropertiesCached.filterIsInstance<KMutableProperty1<*, *>>().toList() } as List<KMutableProperty1<T, *>>
 
     private fun _typeReflection(instance: Any?, targetType: KType): Any? {
         if (targetType.isMarkedNullable && instance == null) return null
@@ -134,7 +162,7 @@ open class Typer private constructor(
             DoubleArray::class -> (instance as? DoubleArray) ?: _toIterable(instance).map { (it as Number).toDouble() }.toTypedArray()
             Any::class -> instance
             else -> when {
-                targetClass.isSubclassOf(Number::class) -> when (targetClass) {
+                subClassCacheNumber.getOrPut(targetClass) { targetClass.isSubclassOf(Number::class) } -> when (targetClass) {
                     Byte::class -> (instance as? Number)?.toByte() ?: instance.toString().toIntOrNull()?.toByte() ?: 0.toByte()
                     Short::class -> (instance as? Number)?.toShort() ?: instance.toString().toIntOrNull()?.toShort() ?: 0.toShort()
                     Char::class -> (instance as? Number)?.toChar() ?: instance.toString().toIntOrNull()?.toChar() ?: 0.toChar()
@@ -146,19 +174,19 @@ open class Typer private constructor(
                     BigDecimal::class -> (instance as? BigDecimal) ?: instance.toString().toBigDecimal()
                     else -> TODO()
                 }
-                targetClass.isSubclassOf(Map::class) -> {
+                subClassCacheMap.getOrPut(targetClass) { targetClass.isSubclassOf(Map::class) } -> {
                     val paramKey = targetType.arguments.first().type ?: Any::class.starProjectedType
                     val paramValue = targetType.arguments.last().type ?: Any::class.starProjectedType
                     _toMap(instance).entries.associate { (key, value) ->
                         key?.let { _type(it, paramKey) } to value?.let { _type(it, paramValue) }
                     }
                 }
-                targetClass.isSubclassOf(Iterable::class) -> {
+                subClassCacheIterable.getOrPut(targetClass) { targetClass.isSubclassOf(Iterable::class) } -> {
                     val param = targetType.arguments.first().type ?: Any::class.starProjectedType
                     val info = _toIterable(instance).map { it?.let { type<Any>(it, param) } }
                     when {
-                        targetClass.isSubclassOf(List::class) -> info.toMutableList()
-                        targetClass.isSubclassOf(Set::class) -> info.toMutableSet()
+                        subClassCacheList.getOrPut(targetClass) { targetClass.isSubclassOf(List::class) } -> info.toMutableList()
+                        subClassCacheSet.getOrPut(targetClass) { targetClass.isSubclassOf(Set::class) } -> info.toMutableSet()
                         else -> error("Don't know how to convert iterable into $targetClass")
                     }
                 }
@@ -168,10 +196,7 @@ open class Typer private constructor(
                 }
                 else -> {
                     val data = _toMap(instance)
-                    val constructor = targetClass.primaryConstructor
-                            ?: targetClass.constructors.firstOrNull { it.parameters.isNotEmpty() }
-                            ?: targetClass.constructors.firstOrNull()
-                    ?: error("Can't find constructor for $targetClass")
+                    val constructor = targetClass.primaryConstructorCached
 
                     val processedKeys = linkedSetOf<String?>()
 
@@ -184,7 +209,7 @@ open class Typer private constructor(
                     val instance = kotlin.runCatching { constructor.call(*params.toTypedArray()) }.getOrNull()
                             ?: error("Can't instantiate object $targetClass")
 
-                    for (prop in targetClass.memberProperties.filterIsInstance<KMutableProperty1<*, *>>()) {
+                    for (prop in targetClass.memberMutablePropertiesCached) {
                         processedKeys += prop.name
                         kotlin.runCatching { (prop as KMutableProperty1<Any?, Any?>).set(instance, data[prop.name]) }
                     }
@@ -239,9 +264,9 @@ open class Typer private constructor(
                 if (jclazz.isEnum) {
                     jclazz.enumConstants.first()
                 } else {
-                    val constructor = clazz.primaryConstructor ?: clazz.constructors.firstOrNull { it.isAccessible }
-                    ?: error("Class $clazz doesn't have public constructors")
-                    constructor.call(*constructor.valueParameters.map { createDefault(it.type) }.toTypedArray())
+                    val constructor = clazz.primaryConstructorCached
+                    val defaultParameters = constructor.valueParameters.map { createDefault(it.type) }.toTypedArray()
+                    constructor.call(*defaultParameters)
                 }
             }
         }
