@@ -64,13 +64,12 @@ inline fun <reified T : Any> Partial(builder: PartialBuilder<T>.() -> Unit): Par
 inline fun <reified T : Any> Partial(vararg items: Pair<KProperty1<T, *>, Any>): Partial<T> =
     Partial(items.associate { it.first.name to it.second }, T::class)
 
-@UseExperimental(ExperimentalStdlibApi::class)
 fun <T : Any> Partial(value: T, clazz: KClass<out T> = value::class): Partial<T> =
     // @TODO: Cache and performance
         Partial(
             (clazz as KClass<T>).members
                 .filterIsInstance<KProperty1<T, *>>()
-                .filterNot { it.hasAnnotation<DbIgnore>() }
+                .filterNot { it.findAnnotation<DbIgnore>() != null }
                 .associate { it.name to it.get(value) },
             clazz
         )

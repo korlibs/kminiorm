@@ -127,14 +127,13 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
         }
     }
 
-    @UseExperimental(ExperimentalTime::class)
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
-        val startTime = MonoClock.markNow()
+        val startTime = System.currentTimeMillis()
         try {
             return if (db.async) withContext(db.dispatcher) { _query(sql, *params) } else _query(sql, *params)
         } finally {
-            val time = startTime.elapsedNow()
-            if (DEBUG_JDBC || db.debugSQL) println("QUERY[${wrappedConnection.connectionIndex}][$time] : $sql, ${params.toList()}")
+            val time = System.currentTimeMillis() - startTime
+            if (DEBUG_JDBC || db.debugSQL) println("QUERY[${wrappedConnection.connectionIndex}][${time}ms] : $sql, ${params.toList()}")
         }
     }
 }

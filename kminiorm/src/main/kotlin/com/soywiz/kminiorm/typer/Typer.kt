@@ -13,7 +13,6 @@ import kotlin.reflect.*
 import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
 
-@UseExperimental(ExperimentalStdlibApi::class)
 open class Typer private constructor(
     internal val keepTypes: Set<KClass<*>> = setOf(),
     internal val untypersByClass: Map<KClass<*>, Typer.(Any) -> Any> = mapOf(),
@@ -43,7 +42,6 @@ open class Typer private constructor(
 
     inline fun <reified T : Any> withTyperUntyper(noinline typer: Typer.(Any, KType) -> T, noinline untyper: Typer.(T) -> Any = { it }) = withTyper(T::class, typer).withUntyper(T::class, untyper)
 
-    @UseExperimental(ExperimentalStdlibApi::class)
     fun untype(instance: Any): Any {
         val clazz = instance::class
         if (clazz in keepTypes) return instance
@@ -63,7 +61,7 @@ open class Typer private constructor(
                     else -> LinkedHashMap<String, Any?>().also { out ->
                         for (prop in clazz.memberPropertiesCached) {
                             prop.isAccessible = true
-                            if (!prop.hasAnnotation<DbIgnore>() && !prop.isLateinit) {
+                            if (prop.findAnnotation<DbIgnore>() == null && !prop.isLateinit) {
                                 out[prop.name] = (prop as KProperty1<Any?, Any?>).get(instance)?.let { untype(it) }
                             }
                         }
@@ -95,6 +93,7 @@ open class Typer private constructor(
         return out
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     inline fun <reified T> type(instance: Any?): T = type(instance, typeOf<T>())
     fun <T : Any> type(instance: Any?, type: KClass<T>): T = type(instance, type.starProjectedType)
     fun <T> type(instance: Any?, targetType: KType): T = _type(instance, targetType) as T
@@ -227,6 +226,7 @@ open class Typer private constructor(
         }
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     inline fun <reified T> createDefault(): Any? = createDefault(typeOf<T>())
 
     fun createDefault(type: KType): Any? = if (USE_JIT) createDefaultJit(type) else createDefaultReflection(type)

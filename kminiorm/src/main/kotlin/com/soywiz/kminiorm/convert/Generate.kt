@@ -459,7 +459,6 @@ object GenerateSample {
     enum class MyEnum { A, B, C }
 
     @JvmStatic
-    @UseExperimental(ExperimentalTime::class)
     fun main(args: Array<String>) {
         val factory = GenerateFactory(
             debug = true,

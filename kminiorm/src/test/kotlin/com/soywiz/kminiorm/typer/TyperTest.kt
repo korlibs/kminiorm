@@ -77,7 +77,6 @@ class TyperTest {
         override fun iterator(): Iterator<Map.Entry<String, Any?>> = map.iterator()
     }
 
-    @UseExperimental(ExperimentalStdlibApi::class)
     @Test
     fun testMixed() {
         val json = MiniJson.parse("{\"list\": [{\"a\": 1, \"b\": 2}]}")!!
