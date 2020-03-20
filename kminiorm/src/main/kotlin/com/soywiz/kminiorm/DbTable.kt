@@ -2,6 +2,7 @@ package com.soywiz.kminiorm
 
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.flow.*
+import java.sql.SQLException
 import kotlin.reflect.*
 
 interface DbBaseModel {

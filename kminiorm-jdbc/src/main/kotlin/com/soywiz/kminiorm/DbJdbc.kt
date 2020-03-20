@@ -136,11 +136,13 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
         val startTime = System.currentTimeMillis()
+        var results: DbResult? = null
         try {
-            return if (db.async) withContext(db.dispatcher) { _query(sql, *params) } else _query(sql, *params)
+            results = if (db.async) withContext(db.dispatcher) { _query(sql, *params) } else _query(sql, *params)
+            return results!!
         } finally {
             val time = System.currentTimeMillis() - startTime
-            if (DEBUG_JDBC || db.debugSQL) println("QUERY[${wrappedConnection.connectionIndex}][${time}ms] : $sql, ${params.toList()}")
+            if (DEBUG_JDBC || db.debugSQL) println("QUERY[${wrappedConnection.connectionIndex}][${time}ms] : $sql, ${params.toList()} --> ${results?.size}")
         }
     }
 }
@@ -229,8 +231,8 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             assert(keys.size == values.size)
 
             return query(dialect.sqlInsert(table.tableName, keys), *values.toTypedArray())
-        } catch (e: SQLIntegrityConstraintViolationException) {
-            throw DuplicateKeyDbException("Conflict", e)
+        } catch (e: Throwable) {
+            throw dialect.transformException(e)
         }
     }
 
@@ -251,8 +253,10 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
                 val orders = sorted.map { table.getColumnByProp(it.first)!!.quotedName + when { it.second > 0 -> " ASC"; it.second < 0 -> " DESC"; else -> "" } }
                 append(" ORDER BY ${orders.joinToString(", ")}")
             }
-            if (limit != null) append(" LIMIT $limit")
-            if (skip != null) append(" OFFSET $skip")
+            if (limit != null || skip != null) {
+                append(" LIMIT ${limit ?: Int.MAX_VALUE}")
+                if (skip != null) append(" OFFSET $skip")
+            }
             append(";")
         }).map { Partial(it.mapValues { (key, value) ->
             table.deserializeColumn(value, table.getColumnByName(key), key)

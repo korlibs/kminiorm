@@ -20,6 +20,9 @@ open class Typer private constructor(
     //val USE_JIT: Boolean = true
     val USE_JIT: Boolean = false
 ) {
+    companion object {
+        private val EMPTY_BYTE_ARRAY = byteArrayOf()
+    }
     val generateFactory: GenerateFactory by lazy { GenerateFactory() }
 
     constructor() : this(keepTypes = setOf())
@@ -248,6 +251,7 @@ open class Typer private constructor(
             Byte::class -> 0.toByte()
             Short::class -> 0.toShort()
             Char::class -> 0.toChar()
+            ByteArray::class -> EMPTY_BYTE_ARRAY
             Int::class -> 0
             Long::class -> 0L
             String::class -> ""

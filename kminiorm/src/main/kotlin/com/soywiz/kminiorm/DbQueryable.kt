@@ -2,6 +2,8 @@ package com.soywiz.kminiorm
 
 import kotlinx.coroutines.*
 import org.intellij.lang.annotations.*
+import java.sql.SQLException
+import java.sql.SQLIntegrityConstraintViolationException
 import java.util.*
 import kotlin.coroutines.*
 import kotlin.reflect.KAnnotatedElement
@@ -188,7 +190,7 @@ open class SqlDialect() : DbQuoteable {
                 }
     }
 
-    protected fun _quote(str: String, type: Char = '"') = buildString {
+    open protected fun _quote(str: String, type: Char = '"') = buildString {
         append(type)
         for (char in str) {
             if (char == type) {
@@ -225,10 +227,25 @@ open class SqlDialect() : DbQuoteable {
             append(")")
         }
     }
+
+    open fun transformException(e: Throwable): Throwable = when (e) {
+        is SQLIntegrityConstraintViolationException -> DuplicateKeyDbException("Conflict", e)
+        else -> e
+    }
 }
 
 open class SqliteDialect : SqlDialect() {
     companion object : SqliteDialect()
+
+    //override fun quoteColumnName(str: String) = "[$str]"
+    //override fun quoteTableName(str: String) = "[$str]"
+    //override fun quoteString(str: String) = _quote(str, type = '\'')
+
+    override fun transformException(e: Throwable): Throwable {
+        val message = e.message ?: ""
+        if (e is SQLException && message.contains("constraint violation")) return DuplicateKeyDbException("Conflict", e)
+        return super.transformException(e)
+    }
 
     override suspend fun showColumns(db: DbQueryable, table: String): List<IColumnDef> {
         return db.query("PRAGMA table_info(${quoteTableName(table)});")
