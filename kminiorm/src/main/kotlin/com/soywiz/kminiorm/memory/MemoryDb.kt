@@ -23,6 +23,7 @@ class MemoryTransaction(override val db: DbBase) : DbBaseTransaction {
     override suspend fun DbBase.commit(): Unit = Unit
     override suspend fun DbBase.rollback(): Unit = Unit
     override suspend fun query(sql: String, vararg params: Any?): DbResult = db.query(sql, *params)
+    override suspend fun multiQuery(sql: String, paramsList: List<Array<out Any?>>): DbResult = db.multiQuery(sql, paramsList)
 }
 
 class MemoryDbIndex<T : DbTableBaseElement>(val name: String, val columns: List<ColumnDef<T>>) {
@@ -47,7 +48,7 @@ class MemoryDbTable<T : DbTableBaseElement>(
     override val clazz: KClass<T>,
     override val typer: Typer
 ) : AbstractDbTable<T>() {
-    val ormTableInfo = OrmTableInfo(db.dialect, clazz)
+    override val ormTableInfo = OrmTableInfo(db.dialect, clazz)
     val instances = arrayListOf<T>()
     val uniqueIndices = ormTableInfo.columnUniqueIndices.map { MemoryDbIndex(it.key, it.value) }
 

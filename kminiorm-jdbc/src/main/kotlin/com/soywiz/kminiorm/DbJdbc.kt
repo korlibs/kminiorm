@@ -87,6 +87,7 @@ class JdbcDb(
     }
 
     override suspend fun query(@Language("SQL") sql: String, vararg params: Any?) = transaction { query(sql, *params) }
+    override suspend fun multiQuery(@Language("SQL") sql: String, paramsList: List<Array<out Any?>>): DbResult = transaction { multiQuery(sql, paramsList) }
 }
 
 
@@ -109,21 +110,33 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
         val WRITE_QUERIES = listOf("UPDATE", "INSERT", "CREATE", "DELETE", "UPSERT")
     }
 
-    private fun _query(sql: String, vararg params: Any?): DbResult {
+    @Suppress("ComplexRedundantLet")
+    internal fun _query(sql: String, paramsList: List<Array<out Any?>>): DbResult {
+        if (paramsList.isEmpty()) error("Query doesn't have parameters")
+        val isWrite = WRITE_QUERIES.any { sql.startsWith(it, ignoreCase = true) }
         return connection.prepareStatement(sql).use { statement ->
-            for (index in params.indices) {
-                val param = params[index]
-                if (param is ByteArray) {
-                    //statement.setBlob(index + 1, param.inputStream())
-                    statement.setBytes(index + 1, param)
+            val hasMultiple = paramsList.size > 1
+            for (params in paramsList) {
+                for (index in params.indices) {
+                    val param = params[index]
+                    if (param is ByteArray) {
+                        //statement.setBlob(index + 1, param.inputStream())
+                        statement.setBytes(index + 1, param)
+                    } else {
+                        statement.setObject(index + 1, param)
+                    }
+                }
+                if (isWrite && hasMultiple) {
+                    statement.addBatch()
                 } else {
-                    statement.setObject(index + 1, param)
+                    break
                 }
             }
             val map: List<Map<String, Any?>> = when {
-                WRITE_QUERIES.any { sql.startsWith(it, ignoreCase = true) } ->
-                    @Suppress("ComplexRedundantLet")
-                    statement.executeUpdate().let { listOf(mapOf("updateCount" to statement.largeUpdateCountSafe)) }
+                isWrite -> {
+                    val updateCount: Int = if (hasMultiple) statement.executeBatch().sum() else statement.executeUpdate()
+                    listOf(mapOf("updateCount" to updateCount.toLong()))
+                }
                 else -> statement.executeQuery().use { it.toListMap() }
             }
             JdbcDbResult(statement.largeUpdateCountSafe, map).also { result ->
@@ -135,14 +148,18 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
     val Statement.largeUpdateCountSafe: Long get() = kotlin.runCatching { largeUpdateCount }.getOrNull() ?: kotlin.runCatching { updateCount.toLong() }.getOrNull() ?: 0L
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
+        return multiQuery(sql, listOf(params))
+    }
+
+    override suspend fun multiQuery(sql: String, paramsList: List<Array<out Any?>>): DbResult {
         val startTime = System.currentTimeMillis()
         var results: DbResult? = null
         try {
-            results = if (db.async) withContext(db.dispatcher) { _query(sql, *params) } else _query(sql, *params)
-            return results!!
+            results = if (db.async) withContext(db.dispatcher) { _query(sql, paramsList) } else _query(sql, paramsList)
+            return results
         } finally {
             val time = System.currentTimeMillis() - startTime
-            if (DEBUG_JDBC || db.debugSQL) println("QUERY[${wrappedConnection.connectionIndex}][${time}ms] : $sql, ${params.toList()} --> ${results?.size}")
+            if (DEBUG_JDBC || db.debugSQL) println("QUERY[${wrappedConnection.connectionIndex}][${time}ms] : $sql, ${paramsList.map { it.toList() }} --> ${results?.size}")
         }
     }
 }
@@ -217,22 +234,48 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
         return instance
     }
 
-    override suspend fun insert(data: Map<String, Any?>): DbResult {
+    suspend fun _insert(data: List<Map<String, Any?>>, onConflict: DbOnConflict): DbResult {
         try {
-            val entries = table.toColumnMap(data).entries
+            val columns = data.first().keys
+            val dataList = columns.map { column -> column to data.map { it[column] } }.toMap()
+            val entries = table.toColumnMap(dataList).entries
 
             val keys: MutableList<IColumnDef> = entries.map { it.key }.toMutableList()
-            val values = entries.map { table.serializeColumn(it.value, it.key) }.toMutableList()
-            if (table.hasExtrinsicData) {
-                keys += EXTRINSIC_COLUMN
-                values += MiniJson.stringify(data.filter { table.getColumnByName(it.key) == null })
+            if (table.hasExtrinsicData) keys += EXTRINSIC_COLUMN
+
+            val valuesList = arrayListOf<Array<out Any?>>()
+
+            val insertInfo = dialect.sqlInsert(table.tableName, ormTableInfo, keys, onConflict)
+
+            for (n in 0 until data.size) {
+                val rdata = data[n]
+                val values = entries.map { table.serializeColumn(it.value[n], it.key) }.toMutableList()
+                if (table.hasExtrinsicData) {
+                    values += MiniJson.stringify(rdata.filter { table.getColumnByName(it.key) == null })
+                }
+                assert(keys.size == values.size)
+                val zvalues = arrayListOf<Any?>()
+                repeat(insertInfo.repeatCount) {
+                    zvalues.addAll(values)
+                }
+                valuesList += zvalues.toTypedArray()
             }
 
-            assert(keys.size == values.size)
-
-            return query(dialect.sqlInsert(table.tableName, keys), *values.toTypedArray())
+            return multiQuery(insertInfo.sql, valuesList)
         } catch (e: Throwable) {
             throw dialect.transformException(e)
+        }
+    }
+
+    override suspend fun insert(data: Map<String, Any?>): DbResult {
+        return _insert(listOf(data), onConflict = DbOnConflict.ERROR)
+    }
+
+    override suspend fun insert(instances: List<T>, onConflict: DbOnConflict) {
+        if (dialect.supportExtendedInsert) {
+            _insert(instances.map { JdbcDbTyper.untype(it) as Map<String, Any?> }, onConflict)
+        } else {
+            super.insert(instances, onConflict)
         }
     }
 
@@ -338,7 +381,7 @@ interface ColumnExtra {
 }
 
 class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val clazz: KClass<T>) : SqlTable<T>(), ColumnExtra {
-    val ormTableInfo = OrmTableInfo(db.dialect, clazz)
+    override val ormTableInfo = OrmTableInfo(db.dialect, clazz)
     val tableName = ormTableInfo.tableName
     val quotedTableName = db.quoteTableName(tableName)
     val hasExtrinsicData = ExtrinsicData::class.isSuperclassOf(clazz)
@@ -350,17 +393,18 @@ class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val 
 
     override val table: DbJdbcTable<T> get() = this
     override suspend fun query(sql: String, vararg params: Any?): DbResult = db.query(sql, *params)
+    override suspend fun multiQuery(sql: String, paramsList: List<Array<out Any?>>): DbResult = db.multiQuery(sql, paramsList)
 
     override suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R = db.transaction {
         callback(DbTableTransaction(this@DbJdbcTable, this))
     }
 
-    fun toColumnMap(map: Map<String, Any?>): Map<ColumnDef<T>, Any?> {
+    fun <R> toColumnMap(map: Map<String, R>): Map<ColumnDef<T>, R> {
         @Suppress("UNCHECKED_CAST")
         return map.entries
             .map { getColumnByName(it.key) to it.value }
             .filter { it.first != null }
-            .toMap() as Map<ColumnDef<T>, Any?>
+            .toMap() as Map<ColumnDef<T>, R>
     }
 
     fun serializeColumn(value: Any?, column: ColumnDef<T>?, columnName: String = column?.name ?: "unknown"): Any? {
@@ -418,7 +462,11 @@ class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val 
     }
 }
 
-class DbTableTransaction<T: DbTableBaseElement>(override val table: DbJdbcTable<T>, val transaction: DbBaseTransaction) : SqlTable<T>() {
+class DbTableTransaction<T: DbTableBaseElement>(
+        override val table: DbJdbcTable<T>,
+        val transaction: DbBaseTransaction
+) : SqlTable<T>() {
+    override val ormTableInfo: OrmTableInfo<T> get() = table.ormTableInfo
     override val clazz: KClass<T> get() = table.clazz
     override val db get() = table.db
 
@@ -427,6 +475,7 @@ class DbTableTransaction<T: DbTableBaseElement>(override val table: DbJdbcTable<
     }
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult = transaction.query(sql, *params)
+    override suspend fun multiQuery(@Language("SQL") sql: String, paramsList: List<Array<out Any?>>): DbResult = transaction.multiQuery(sql, paramsList)
 }
 
 class JdbcDbResult(

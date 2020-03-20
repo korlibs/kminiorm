@@ -154,6 +154,10 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         //table.update(Partial(mapOf("list" to listOf("000000000000000000000001", "000000000000000000000002")), ArrayOfDbKey::class)) { id(item._id) }
     }
 
+    data class MultiInsertTest(@DbUnique val a: String, val value: Int) : DbBaseModel {
+        override fun toString(): String = "($a, $value)"
+    }
+
     /*
     @Test
     fun testUpdate1() = suspendTest {
@@ -432,5 +436,20 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals(2, table.where.gt(Simple::b, 20).count())
         assertEquals(1, table.where.gt(Simple::b, 20).limit(1).count())
         assertEquals(listOf(33), table.where.gt(Simple::b, 20).skip(1).map { it.c }.toList())
+    }
+
+    @Test
+    fun testMultiInsert() = suspendTest {
+        val table = db.table<MultiInsertTest>()
+        table.deleteAll()
+        //println((db as DbQueryable).query("select sqlite_version();"))
+        val item = table.insert(MultiInsertTest("a", 1), MultiInsertTest("b", 1), MultiInsertTest("c", 1))
+        assertEquals("[(a, 1), (b, 1), (c, 1)]", table.findAll().sortedBy { it.a }.toString())
+        assertFailsWith<DuplicateKeyDbException> { table.insert(MultiInsertTest("a", 2), MultiInsertTest("b", 2), MultiInsertTest("c", 2), onConflict = DbOnConflict.ERROR) }
+        assertEquals("[(a, 1), (b, 1), (c, 1)]", table.findAll().sortedBy { it.a }.toString())
+        table.insert(MultiInsertTest("a", 3), MultiInsertTest("b", 3), MultiInsertTest("c", 3), onConflict = DbOnConflict.IGNORE)
+        assertEquals("[(a, 1), (b, 1), (c, 1)]", table.findAll().sortedBy { it.a }.toString())
+        table.insert(MultiInsertTest("a", 4), MultiInsertTest("b", 4), MultiInsertTest("c", 4), onConflict = DbOnConflict.REPLACE)
+        assertEquals("[(a, 4), (b, 4), (c, 4)]", table.findAll().sortedBy { it.a }.toString())
     }
 }

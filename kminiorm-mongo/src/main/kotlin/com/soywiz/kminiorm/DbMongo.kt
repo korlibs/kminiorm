@@ -39,7 +39,7 @@ class DbMongo private constructor(val mongoClient: MongoClient, val client: Mong
 
 class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override val clazz: KClass<T>) : AbstractDbTable<T>() {
     override val typer get() = db.typer
-    val ormTableInfo by lazy { OrmTableInfo(db.dialect, clazz) }
+    override val ormTableInfo by lazy { OrmTableInfo(db.dialect, clazz) }
     val collection get() = ormTableInfo.tableName
     val mongo get() = db.client
     val dbCollection by lazy { db.client.getCollection(collection) }

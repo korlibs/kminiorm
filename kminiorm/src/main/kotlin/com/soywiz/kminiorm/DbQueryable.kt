@@ -10,11 +10,18 @@ import kotlin.reflect.KAnnotatedElement
 import kotlin.reflect.KProperty1
 import kotlin.reflect.KType
 import kotlin.reflect.full.findAnnotation
-import kotlin.reflect.full.isSubclassOf
 import kotlin.reflect.jvm.jvmErasure
 
 interface DbQueryable {
     suspend fun query(@Language("SQL") sql: String, vararg params: Any?): DbResult
+    suspend fun multiQuery(@Language("SQL") sql: String, paramsList: List<Array<out Any?>>): DbResult {
+        if (paramsList.isEmpty()) error("paramsList is empty")
+        var lastResult: DbResult? = null
+        for (params in paramsList) {
+            lastResult = query(sql, *params)
+        }
+        return lastResult!!
+    }
 }
 
 fun DbQueryable.queryBlocking(@Language("SQL") sql: String, vararg params: Any?): DbResult = runBlocking { query(sql, *params) }
@@ -216,21 +223,52 @@ open class SqlDialect() : DbQuoteable {
         }
     }
 
-    open fun sqlInsert(tableName: String, keys: List<IColumnDef>): String {
-        return buildString {
-            append("INSERT INTO ")
+    open fun sqlInsertInto(onConflict: DbOnConflict): String = when (onConflict) {
+        DbOnConflict.ERROR -> "INSERT INTO "
+        DbOnConflict.IGNORE -> "INSERT IGNORE INTO "
+        DbOnConflict.REPLACE -> "INSERT INTO "
+    }
+
+    data class SqlInsertInfo(val sql: String, val repeatCount: Int)
+    open fun sqlInsert(tableName: String, tableInfo: OrmTableInfo<*>, keys: List<IColumnDef>, onConflict: DbOnConflict): SqlInsertInfo {
+        var repeatCount = 1
+        return SqlInsertInfo(buildString {
+            append(sqlInsertInto(onConflict))
             append(quoteTableName(tableName))
             append(" (")
             append(keys.joinToString(", ") { quoteColumnName(it.name) })
             append(") VALUES (")
             append(keys.joinToString(", ") { "?" })
             append(")")
-        }
+            if (onConflict == DbOnConflict.REPLACE) {
+                val res = sqlInsertReplace(tableInfo, keys)
+                append(res.sql)
+                repeatCount += res.repeatCount
+            }
+        }, repeatCount)
     }
+
+    open fun sqlInsertReplace(tableInfo: OrmTableInfo<*>, keys: List<IColumnDef>): SqlInsertInfo {
+        return SqlInsertInfo(buildString {
+            TODO()
+        }, 0)
+    }
+
+    open val supportExtendedInsert = false
 
     open fun transformException(e: Throwable): Throwable = when (e) {
         is SQLIntegrityConstraintViolationException -> DuplicateKeyDbException("Conflict", e)
-        else -> e
+        else -> {
+            val message = e.message ?: ""
+            when {
+                e is SQLException && (message.contains("constraint violation") || message.contains("constraint failed") || message.contains("key violation")) -> {
+                    DuplicateKeyDbException("Conflict", e)
+                }
+                else -> {
+                    e
+                }
+            }
+        }
     }
 }
 
@@ -241,12 +279,25 @@ open class SqliteDialect : SqlDialect() {
     //override fun quoteTableName(str: String) = "[$str]"
     //override fun quoteString(str: String) = _quote(str, type = '\'')
 
-    override fun transformException(e: Throwable): Throwable {
-        val message = e.message ?: ""
-        if (e is SQLException && message.contains("constraint violation")) return DuplicateKeyDbException("Conflict", e)
-        return super.transformException(e)
+    override val supportExtendedInsert = false
+
+    override fun sqlInsertReplace(tableInfo: OrmTableInfo<*>, keys: List<IColumnDef>): SqlInsertInfo {
+        var repeatCount = 0
+        return SqlInsertInfo(buildString {
+            //append(" ON CONFLICT(a) DO UPDATE SET ")
+            for (uniqueColumns in tableInfo.columnUniqueIndices.values) {
+                val columns = uniqueColumns.joinToString(", ") { quoteColumnName(it.name) }
+                append(" ON CONFLICT($columns) DO UPDATE SET ")
+                append(keys.joinToString(", ") { "${quoteColumnName(it.name)}=?" })
+                repeatCount++
+            }
+        }, repeatCount)
     }
 
+    override fun sqlInsertInto(onConflict: DbOnConflict): String = when (onConflict) {
+        DbOnConflict.IGNORE -> "INSERT OR IGNORE INTO "
+        else -> super.sqlInsertInto(onConflict)
+    }
     override suspend fun showColumns(db: DbQueryable, table: String): List<IColumnDef> {
         return db.query("PRAGMA table_info(${quoteTableName(table)});")
                 .map { SyntheticColumn<String>(it["name"]?.toString() ?: "-") }

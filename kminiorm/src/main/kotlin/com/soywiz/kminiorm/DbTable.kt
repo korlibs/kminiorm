@@ -2,7 +2,6 @@ package com.soywiz.kminiorm
 
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.flow.*
-import java.sql.SQLException
 import kotlin.reflect.*
 
 interface DbBaseModel {
@@ -79,8 +78,11 @@ suspend fun <T : DbTableIntElement> DbIntRef<T>.resolved(table: DbTable<T>): T? 
 suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(db: Db): T? = resolved(db.uninitializedTable(T::class))
 
 abstract class AbstractDbTable<T : DbTableBaseElement> : DbTable<T> {
+    abstract val ormTableInfo: OrmTableInfo<T>
     override val typerForClass: ClassTyper<T> by lazy { typer.typerForClass(clazz) }
 }
+
+enum class DbOnConflict { ERROR, IGNORE, REPLACE }
 
 //interface DbTable<T : Any> {
 interface DbTable<T : DbTableBaseElement> {
@@ -102,6 +104,15 @@ interface DbTable<T : DbTableBaseElement> {
         return DbResult(mapOf("insert" to 1))
     }
     suspend fun insertIgnore(value: T): Unit = run { kotlin.runCatching { insert(value) } }
+    suspend fun insert(instances: List<T>, onConflict: DbOnConflict = DbOnConflict.ERROR) {
+        transaction {
+            when (onConflict) {
+                DbOnConflict.ERROR -> for (instance in instances) insert(instance)
+                DbOnConflict.IGNORE -> for (instance in instances) insertIgnore(instance)
+                DbOnConflict.REPLACE -> for (instance in instances) upsert(instance)
+            }
+        }
+    }
 
     // R
     suspend fun findFlowPartial(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<Partial<T>>
@@ -166,3 +177,4 @@ suspend fun <T : DbTableElement> DbTable<T>.findById(id: DbKey): T? = findOne { 
 suspend fun <T : DbTableIntElement> DbTable<T>.findByIntId(id: DbIntRef<T>): T? = findOne { DbQuery.BinOp(DbIntModel::id as KProperty1<T, DbIntKey>, id, DbQueryBinOp.EQ) }
 suspend fun <T : DbTableStringElement> DbTable<T>.findByIntId(id: DbStringRef<T>): T? = findOne { DbQuery.BinOp(DbStringModel::id as KProperty1<T, DbStringRef<*>>, id, DbQueryBinOp.EQ) }
 suspend fun <T : DbTableBaseElement> DbTable<T>.findOrCreate(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }, build: () -> T): T = findOne(query) ?: build().also { insert(it) }
+suspend fun <T : DbTableBaseElement> DbTable<T>.insert(vararg values: T, onConflict: DbOnConflict = DbOnConflict.ERROR) = insert(values.toList(), onConflict)
