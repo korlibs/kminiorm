@@ -34,7 +34,7 @@ open class DbQueryBuilder<T> {
     val NEVER by lazy { DbQuery.Never<T>() }
     companion object : DbQueryBuilder<Any>() {
         fun <T> builder() = DbQueryBuilder as DbQueryBuilder<T>
-        fun <T> build(query: DbQueryBuilder<T>.() -> DbQuery<T>) = query(builder())
+        fun <T> build(query: DbQueryBuilder<T>.() -> DbQuery<T>): DbQuery<T> = query(builder())
         fun <T> buildOrNull(query: DbQueryBuilder<T>.() -> DbQuery<T>) = build(query).takeIf { (it !is DbQuery.Never<*>) }
     }
 

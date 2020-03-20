@@ -17,8 +17,6 @@ import java.util.concurrent.atomic.*
 import kotlin.coroutines.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
-import kotlin.reflect.jvm.*
-import kotlin.time.*
 
 //val DEBUG_JDBC = true
 val DEBUG_JDBC = false
@@ -50,12 +48,12 @@ class JdbcDb(
     override val dispatcher: CoroutineContext = Dispatchers.IO,
     val typer: Typer = JdbcDbTyper,
     override val debugSQL: Boolean = false,
-    val dialect: SqlDialect = SqlDialect.ANSI,
+    dialect: SqlDialect = SqlDialect.ANSI,
     override val async: Boolean = true,
     val maxConnections: Int = 8,
     // MySQL default timeout is 8 hours
     val connectionTimeout: Duration = Duration.ofHours(1L) // Reuse this connection during 1 hour, then reconnect
-) : AbstractDb(), DbBase, DbQuoteable by dialect {
+) : AbstractDb(dialect), DbBase, DbQuoteable by dialect {
     override fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz)
 
     private var connectionIndex = AtomicInteger()
@@ -107,25 +105,34 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
         this@DbTransaction.connection.rollback()
     }
 
+    companion object {
+        val WRITE_QUERIES = listOf("UPDATE", "INSERT", "CREATE", "DELETE", "UPSERT")
+    }
+
     private fun _query(sql: String, vararg params: Any?): DbResult {
         return connection.prepareStatement(sql).use { statement ->
             for (index in params.indices) {
                 val param = params[index]
                 if (param is ByteArray) {
-                    statement.setBlob(index + 1, param.inputStream())
+                    //statement.setBlob(index + 1, param.inputStream())
+                    statement.setBytes(index + 1, param)
                 } else {
                     statement.setObject(index + 1, param)
                 }
             }
             val map: List<Map<String, Any?>> = when {
-                sql.startsWith("select", ignoreCase = true) || sql.startsWith("show", ignoreCase = true) -> statement.executeQuery().use { it.toListMap() }
-                else -> statement.executeUpdate().let { listOf(mapOf("updateCount" to statement.largeUpdateCount)) }
+                WRITE_QUERIES.any { sql.startsWith(it, ignoreCase = true) } ->
+                    @Suppress("ComplexRedundantLet")
+                    statement.executeUpdate().let { listOf(mapOf("updateCount" to statement.largeUpdateCountSafe)) }
+                else -> statement.executeQuery().use { it.toListMap() }
             }
-            JdbcDbResult(statement.largeUpdateCount, map).also { result ->
+            JdbcDbResult(statement.largeUpdateCountSafe, map).also { result ->
                 if (DEBUG_JDBC) println(" --> $result")
             }
         }
     }
+
+    val Statement.largeUpdateCountSafe: Long get() = kotlin.runCatching { largeUpdateCount }.getOrNull() ?: kotlin.runCatching { updateCount.toLong() }.getOrNull() ?: 0L
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult {
         val startTime = System.currentTimeMillis()
@@ -142,52 +149,37 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
     abstract val table: DbJdbcTable<T>
     override val typer get() = table.db.typer
     private val _db get() = table.db
+    private val dialect get() = _db.dialect
     private val _quotedTableName get() = table.quotedTableName
 
-    override suspend fun showColumns(): Map<String, Map<String, Any?>> {
-        return query("SHOW COLUMNS FROM $_quotedTableName;")
-            .associateBy {
-                it["FIELD"]?.toString()
-                    ?: it["COLUMN_NAME"]?.toString()
-                    ?: "-"
-            }
+    override suspend fun showColumns(): Map<String, IColumnDef> {
+        return dialect.showColumns(db, table.tableName).map { it.name to it }.toMap()
     }
 
+    @OptIn(ExperimentalStdlibApi::class)
     override suspend fun initialize(): DbTable<T> = this.apply {
-        query("CREATE TABLE IF NOT EXISTS $_quotedTableName;")
-        val oldColumns = showColumns()
-        for (column in table.columns) {
-            if (column.name in oldColumns) continue // Do not add columns if they already exists
+        query(dialect.sqlCreateTable(table.tableName, table.columnsWithExtrinsic))
+        try {
+            val oldColumns = showColumns()
+            //println("oldColumns: $oldColumns")
+            for (column in table.columns) {
+                if (column.name in oldColumns) continue // Do not add columns if they already exists
 
-            val result = kotlin.runCatching {
-                query(buildString {
-                    append("ALTER TABLE ")
-                    append(_quotedTableName)
-                    append(" ADD ")
-                    append(column.quotedName)
-                    append(" ")
-                    append(column.sqlType)
-                    if (column.isNullable) {
-                        append(" NULL")
-                    } else {
-                        append(" NOT NULL")
-                        when {
-                            column.jclazz == String::class -> append(" DEFAULT ('')")
-                            column.jclazz.isSubclassOf(Number::class) -> append(" DEFAULT (0)")
-                        }
-                    }
-                    append(";")
-                })
+                val result = kotlin.runCatching {
+                    query(dialect.sqlAlterTableAddColumn(table.tableName, column))
+                }
+                if (result.isFailure) {
+                    //throw result.exceptionOrNull()!!
+                    println(result.exceptionOrNull())
+                }
             }
-            if (result.isFailure) {
-                //throw result.exceptionOrNull()!!
-                println(result.exceptionOrNull())
-            }
+        } catch (e: Throwable) {
+            e.printStackTrace()
         }
 
         if (table.hasExtrinsicData) {
             val result = kotlin.runCatching {
-                query("ALTER TABLE $_quotedTableName ADD $__extrinsic__ VARCHAR NOT NULL DEFAULT '{}'")
+                query(dialect.sqlAlterTableAddColumn(table.tableName, EXTRINSIC_COLUMN))
             }
             if (result.isFailure) {
                 //throw result.exceptionOrNull()!!
@@ -200,16 +192,16 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             val unique = columns.any { it.isUnique }
             val primary = columns.any { it.isPrimary }
             val result = kotlin.runCatching {
-                val queryStr = buildString {
-                    append("CREATE ")
-                    when {
-                        primary -> append(if (_db.dialect.supportPrimaryIndex) "PRIMARY " else "UNIQUE ")
-                        unique -> append("UNIQUE ")
-                    }
-                    val packs = columns.map { "${it.quotedName} ${it.indexDirection.sname}" }
-                    append("INDEX IF NOT EXISTS ${db.quoteColumnName("${table.tableName}_${indexName}")} ON $_quotedTableName (${packs.joinToString(", ")});")
-                }
-                query(queryStr)
+                query(dialect.sqlAlterCreateIndex(
+                        when {
+                            primary -> SqlDialect.IndexType.PRIMARY
+                            unique -> SqlDialect.IndexType.UNIQUE
+                            else -> SqlDialect.IndexType.INDEX
+                        },
+                        table.tableName,
+                        columns,
+                        indexName
+                ))
             }
             if (result.isFailure) {
                 //throw result.exceptionOrNull()!!
@@ -227,26 +219,16 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
         try {
             val entries = table.toColumnMap(data).entries
 
-            val keys = entries.map { it.key.quotedName }.toMutableList()
+            val keys: MutableList<IColumnDef> = entries.map { it.key }.toMutableList()
             val values = entries.map { table.serializeColumn(it.value, it.key) }.toMutableList()
             if (table.hasExtrinsicData) {
-                keys += __extrinsic__
+                keys += EXTRINSIC_COLUMN
                 values += MiniJson.stringify(data.filter { table.getColumnByName(it.key) == null })
             }
 
             assert(keys.size == values.size)
 
-            return query(buildString {
-                append("INSERT INTO ")
-                append(_quotedTableName)
-                append("(")
-                append(keys.joinToString(", "))
-                append(")")
-                append(" VALUES ")
-                append("(")
-                append(keys.joinToString(", ") { "?" })
-                append(")")
-            }, *values.toTypedArray())
+            return query(dialect.sqlInsert(table.tableName, keys), *values.toTypedArray())
         } catch (e: SQLIntegrityConstraintViolationException) {
             throw DuplicateKeyDbException("Conflict", e)
         }
@@ -341,29 +323,23 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
     }
 
     override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        return query(buildString {
-            append("DELETE FROM ")
-            append(table.quotedTableName)
-            append(" WHERE ")
-            append(DbQueryBuilder.build(query).toString(_db))
-            if (limit != null) append(" LIMIT $limit")
-            append(";")
-        }).updateCount
+        return query(dialect.sqlDelete(table.tableName, DbQueryBuilder.build(query), limit)).updateCount
     }
 }
 
 interface ColumnExtra {
     val db: DbBase
     val <T : Any> ColumnDef<T>.quotedName get() = db.quoteColumnName(name)
-    val <T : Any> ColumnDef<T>.sqlType get() = property.returnType.toSqlType(db, property)
+    val <T : Any> ColumnDef<T>.sqlType get() = dialect.toSqlType(property)
 }
 
 class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val clazz: KClass<T>) : SqlTable<T>(), ColumnExtra {
-    val ormTableInfo = OrmTableInfo(clazz)
+    val ormTableInfo = OrmTableInfo(db.dialect, clazz)
     val tableName = ormTableInfo.tableName
     val quotedTableName = db.quoteTableName(tableName)
     val hasExtrinsicData = ExtrinsicData::class.isSuperclassOf(clazz)
     val columns = ormTableInfo.columns
+    val columnsWithExtrinsic: List<IColumnDef> = columns + if (hasExtrinsicData) listOf(EXTRINSIC_COLUMN) else listOf()
     val columnsByName = ormTableInfo.columnsByName
     fun getColumnByName(name: String) = ormTableInfo.getColumnByName(name)
     fun getColumnByProp(prop: KProperty1<T, *>) = ormTableInfo.getColumnByProp(prop)
@@ -402,6 +378,7 @@ class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val 
         return when (value) {
             is InputStream -> value.readBytes()
             is Blob -> value.binaryStream.readBytes()
+            is ByteArray -> value
             is UUID -> value
             is DbKey -> value
             is DbIntKey -> value
@@ -446,24 +423,6 @@ class DbTableTransaction<T: DbTableBaseElement>(override val table: DbJdbcTable<
     }
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult = transaction.query(sql, *params)
-}
-
-fun KType.toSqlType(db: DbBase, annotations: KAnnotatedElement): String {
-    return when (this.jvmErasure) {
-        Int::class -> "INTEGER"
-        ByteArray::class -> "BLOB"
-        Date::class -> "TIMESTAMP"
-        String::class -> {
-            val maxLength = annotations.findAnnotation<DbMaxLength>()
-            //if (maxLength != null) "VARCHAR(${maxLength.length})" else "TEXT"
-            if (maxLength != null) "VARCHAR(${maxLength.length})" else "VARCHAR"
-        }
-        DbIntRef::class, DbIntKey::class -> "INTEGER"
-        DbRef::class, DbKey::class -> "VARCHAR"
-        DbStringRef::class, DbStringRef::class -> "VARCHAR"
-        DbAnyRef::class, DbAnyRef::class -> "VARCHAR"
-        else -> "VARCHAR"
-    }
 }
 
 class JdbcDbResult(

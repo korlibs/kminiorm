@@ -22,7 +22,7 @@ import kotlin.reflect.*
 //val DEBUG_MONGO = true
 val DEBUG_MONGO = false
 
-class DbMongo private constructor(val mongoClient: MongoClient, val client: MongoDatabase, val typer: Typer, val debug: Boolean) : AbstractDb() {
+class DbMongo private constructor(val mongoClient: MongoClient, val client: MongoDatabase, val typer: Typer, val debug: Boolean) : AbstractDb(SqlDialect.ANSI) {
     companion object {
         /**
          * Example: DbMongo("mongodb://127.0.0.1:27017/kminiormtest")
@@ -39,12 +39,12 @@ class DbMongo private constructor(val mongoClient: MongoClient, val client: Mong
 
 class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override val clazz: KClass<T>) : AbstractDbTable<T>() {
     override val typer get() = db.typer
-    val ormTableInfo by lazy { OrmTableInfo(clazz) }
+    val ormTableInfo by lazy { OrmTableInfo(db.dialect, clazz) }
     val collection get() = ormTableInfo.tableName
     val mongo get() = db.client
     val dbCollection by lazy { db.client.getCollection(collection) }
 
-    override suspend fun showColumns(): Map<String, Map<String, Any?>> {
+    override suspend fun showColumns(): Map<String, IColumnDef> {
         TODO()
     }
 

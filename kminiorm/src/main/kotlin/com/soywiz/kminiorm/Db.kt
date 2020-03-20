@@ -8,6 +8,7 @@ import kotlin.reflect.full.*
 import kotlin.reflect.jvm.*
 
 interface Db {
+    val dialect: SqlDialect
     suspend fun <T : DbTableBaseElement> table(clazz: KClass<T>, initialize: Boolean = true): DbTable<T>
     fun <T : DbTableBaseElement> uninitializedTable(clazz: KClass<T>): DbTable<T>
     fun registerBinder(binder: (value: Any?) -> Unit)
@@ -15,7 +16,7 @@ interface Db {
     companion object
 }
 
-abstract class AbstractDb : Db {
+abstract class AbstractDb(override val dialect: SqlDialect) : Db {
     private val cachedTables = java.util.LinkedHashMap<KClass<*>, DbTable<*>>()
     private val uninitializedCachedTables = java.util.LinkedHashMap<KClass<*>, DbTable<*>>()
     override suspend fun <T : DbTableBaseElement> table(clazz: KClass<T>, initialize: Boolean): DbTable<T> {
@@ -38,7 +39,7 @@ abstract class AbstractDb : Db {
 }
 
 val __extrinsicUnquoted__ = "__extrinsic__"
-val __extrinsic__ = "\"$__extrinsicUnquoted__\""
+val EXTRINSIC_COLUMN = SyntheticColumn<String>(__extrinsicUnquoted__, "{}")
 
 // autoBinding
 data class DbBinding<T : Any, R>(val clazz: KClass<T>, val prop: KMutableProperty1<T, R>, val value: R)
@@ -85,9 +86,33 @@ interface DbResult : List<Map<String, Any?>> {
 fun DbResult(data: List<Map<String, Any?>>): DbResult = object : DbResult, List<Map<String, Any?>> by data {}
 fun DbResult(vararg data: Map<String, Any?>): DbResult = DbResult(data.toList())
 
-class ColumnDef<T : Any>(val property: KProperty1<T, *>) {
+interface IColumnDef {
+    val name: String
+    val columnType: KType
+    val defaultValue: Any?
+    val annotatedElement: KAnnotatedElement?
+}
+
+data class SyntheticColumn(
+    override val name: String,
+    override val columnType: KType,
+    override val defaultValue: Any? = Unit,
+    override val annotatedElement: KAnnotatedElement? = null
+) : IColumnDef
+
+@OptIn(ExperimentalStdlibApi::class)
+inline fun <reified T> SyntheticColumn(name: String, defaultValue: Any? = Unit, annotatedElement: KAnnotatedElement? = null) = SyntheticColumn(name, typeOf<T>(), defaultValue, annotatedElement)
+
+class ColumnDef<T : Any>(val dialect: SqlDialect, val property: KProperty1<T, *>) : IColumnDef {
     val jclazz get() = property.returnType.jvmErasure
-    val name = property.findAnnotation<DbName>()?.name ?: property.name
+    override val name = property.findAnnotation<DbName>()?.name ?: property.name
+    override val columnType get() = property.returnType
+    override val defaultValue: Any? get() = when {
+        columnType.jvmErasure == String::class -> ""
+        columnType.jvmErasure.isSubclassOf(Number::class) -> 0
+        else -> Unit
+    }
+    override val annotatedElement: KAnnotatedElement? = property
     val isNullable get() = property.returnType.isMarkedNullable
     val isPrimary = property.findAnnotation<DbPrimary>() != null
     val isUnique = property.findAnnotation<DbUnique>() != null
@@ -112,9 +137,9 @@ class ColumnDef<T : Any>(val property: KProperty1<T, *>) {
                 ?: DbIndexDirection.ASC
 }
 
-class OrmTableInfo<T : Any>(val clazz: KClass<T>) {
+class OrmTableInfo<T : Any>(val dialect: SqlDialect, val clazz: KClass<T>) {
     val tableName = clazz.findAnnotation<DbName>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
-    val columns = clazz.memberProperties.filter { it.findAnnotation<DbIgnore>() == null && !it.name.startsWith("__") }.map { ColumnDef(it) }
+    val columns = clazz.memberProperties.filter { it.findAnnotation<DbIgnore>() == null && !it.name.startsWith("__") }.map { ColumnDef(dialect, it) }
     val columnIndices = columns.filter { it.isAnyIndex }.sortedBy { it.indexOrder }.groupBy { it.indexName }
     val columnUniqueIndices = columns.filter { it.isPrimaryOrUnique }.sortedBy { it.indexOrder }.groupBy { it.indexName }
     val columnsByName = columns.associateBy { it.name }

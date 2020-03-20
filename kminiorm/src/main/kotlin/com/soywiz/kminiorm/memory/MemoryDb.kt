@@ -9,9 +9,9 @@ import kotlin.reflect.*
 
 class MemoryDb(
     val typer: Typer = DbTyper,
-    val dialect: SqlDialect = SqlDialect,
+    dialect: SqlDialect = SqlDialect,
     override val dispatcher: CoroutineContext = Dispatchers.IO
-) : AbstractDb(), DbBase, DbQuoteable by dialect {
+) : AbstractDb(dialect), DbBase, DbQuoteable by dialect {
     override fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T> = MemoryDbTable(this, clazz, typer)
 
     override suspend fun <T> transaction(callback: suspend DbBaseTransaction.() -> T): T = callback(MemoryTransaction(this))
@@ -47,13 +47,13 @@ class MemoryDbTable<T : DbTableBaseElement>(
     override val clazz: KClass<T>,
     override val typer: Typer
 ) : AbstractDbTable<T>() {
-    val ormTableInfo = OrmTableInfo(clazz)
+    val ormTableInfo = OrmTableInfo(db.dialect, clazz)
     val instances = arrayListOf<T>()
     val uniqueIndices = ormTableInfo.columnUniqueIndices.map { MemoryDbIndex(it.key, it.value) }
 
     @Synchronized
-    override suspend fun showColumns(): Map<String, Map<String, Any?>> {
-        return ormTableInfo.columns.associate { it.name to mapOf<String, Any?>() }
+    override suspend fun showColumns(): Map<String, IColumnDef> {
+        return ormTableInfo.columns.associateBy { it.name }
     }
 
     @Synchronized
@@ -76,7 +76,7 @@ class MemoryDbTable<T : DbTableBaseElement>(
         sorted: List<Pair<KProperty1<T, *>, Int>>?,
         query: DbQueryBuilder<T>.() -> DbQuery<T>
     ): Flow<Partial<T>> = flow {
-        val realQuery = query(DbQueryBuilder.builder())
+        val realQuery = query(DbQueryBuilder.builder<T>())
         var skipCount = skip ?: 0L
         val maxLimit = limit ?: Long.MAX_VALUE
         var emitCount = 0L

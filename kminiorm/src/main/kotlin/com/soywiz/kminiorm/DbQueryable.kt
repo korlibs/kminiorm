@@ -4,6 +4,12 @@ import kotlinx.coroutines.*
 import org.intellij.lang.annotations.*
 import java.util.*
 import kotlin.coroutines.*
+import kotlin.reflect.KAnnotatedElement
+import kotlin.reflect.KProperty1
+import kotlin.reflect.KType
+import kotlin.reflect.full.findAnnotation
+import kotlin.reflect.full.isSubclassOf
+import kotlin.reflect.jvm.jvmErasure
 
 interface DbQueryable {
     suspend fun query(@Language("SQL") sql: String, vararg params: Any?): DbResult
@@ -64,9 +70,12 @@ interface DbBaseTransaction : DbQueryable {
 }
 
 open class SqlDialect() : DbQuoteable {
+    val dialect = this
     open val supportPrimaryIndex get() = false
 
     companion object ANSI : SqlDialect()
+
+    enum class IndexType { PRIMARY, UNIQUE, INDEX, OTHER }
 
     override fun quoteColumnName(str: String) = _quote(str)
     override fun quoteTableName(str: String) = _quote(str)
@@ -81,6 +90,104 @@ open class SqlDialect() : DbQuoteable {
         else -> quoteString("$value")
     }
 
+    open fun toSqlType(property: KProperty1<*, *>): String = toSqlType(property.returnType, property)
+
+    open fun toSqlType(type: KType, annotations: KAnnotatedElement? = null): String {
+        return when (type.jvmErasure) {
+            Int::class -> "INTEGER"
+            ByteArray::class -> "BLOB"
+            Date::class -> "TIMESTAMP"
+            String::class -> {
+                val maxLength = annotations?.findAnnotation<DbMaxLength>()
+                //if (maxLength != null) "VARCHAR(${maxLength.length})" else "TEXT"
+                if (maxLength != null) "VARCHAR(${maxLength.length})" else "VARCHAR"
+            }
+            DbIntRef::class, DbIntKey::class -> "INTEGER"
+            DbRef::class, DbKey::class -> "VARCHAR"
+            DbStringRef::class, DbStringRef::class -> "VARCHAR"
+            DbAnyRef::class, DbAnyRef::class -> "VARCHAR"
+            else -> "VARCHAR"
+        }
+    }
+
+    open fun sqlCreateColumnDef(colName: String, type: KType, defaultValue: Any? = Unit, annotations: KAnnotatedElement? = null): String {
+        return buildString {
+            append(quoteColumnName(colName))
+            append(" ")
+            append(toSqlType(type, annotations))
+            if (type.isMarkedNullable) {
+                append(" NULL")
+            } else {
+                append(" NOT NULL")
+                if (defaultValue != Unit) {
+                    append(" DEFAULT (")
+                    append(quoteLiteral(defaultValue))
+                    append(")")
+                }
+            }
+        }
+    }
+
+    open fun sqlCreateColumnDef(column: IColumnDef): String {
+        return sqlCreateColumnDef(column.name, column.columnType, column.defaultValue, column.annotatedElement)
+        /*
+        return buildString {
+            append(quoteColumnName(column.name))
+            append(" ")
+            append(toSqlType(column.property))
+            if (column.isNullable) {
+                append(" NULL")
+            } else {
+                append(" NOT NULL")
+                when {
+                    column.jclazz == String::class -> append(" DEFAULT ('')")
+                    column.jclazz.isSubclassOf(Number::class) -> append(" DEFAULT (0)")
+                }
+            }
+        }
+         */
+    }
+
+    open fun sqlCreateTable(table: String, columns: List<IColumnDef>): String {
+        return buildString {
+            append("CREATE TABLE IF NOT EXISTS ")
+            append(quoteTableName(table))
+            append(" (")
+            append(columns.joinToString(", ") { sqlCreateColumnDef(it) })
+            append(");")
+        }
+    }
+
+    open fun sqlAlterTableAddColumn(table: String, column: IColumnDef): String {
+        return buildString {
+            append("ALTER TABLE ")
+            append(quoteTableName(table))
+            append(" ADD ")
+            append(sqlCreateColumnDef(column))
+            append(";")
+        }
+    }
+
+    open fun sqlDelete(table: String, query: DbQuery<*>, limit: Long? = null): String {
+        return buildString {
+            append("DELETE FROM ")
+            append(quoteTableName(table))
+            append(" WHERE ")
+            append(query.toString(dialect))
+            if (limit != null) append(" LIMIT $limit")
+            append(";")
+        }
+    }
+
+    open suspend fun showColumns(db: DbQueryable, table: String): List<IColumnDef> {
+        return db.query("SHOW COLUMNS FROM ${quoteTableName(table)};")
+                .map {
+                    SyntheticColumn<String>(it["FIELD"]?.toString()
+                            ?: it["COLUMN_NAME"]?.toString()
+                            ?: "-")
+                }
+    }
+
     protected fun _quote(str: String, type: Char = '"') = buildString {
         append(type)
         for (char in str) {
@@ -93,11 +200,45 @@ open class SqlDialect() : DbQuoteable {
         }
         append(type)
     }
+
+    open fun sqlAlterCreateIndex(index: IndexType, tableName: String, columns: List<ColumnDef<*>>, indexName: String): String {
+        return buildString {
+            append("CREATE ")
+            append(when (index) {
+                IndexType.PRIMARY -> if (dialect.supportPrimaryIndex) "PRIMARY INDEX" else "UNIQUE INDEX"
+                IndexType.UNIQUE -> "UNIQUE INDEX"
+                else -> "INDEX"
+            })
+            val packs = columns.map { "${quoteColumnName(it.name)} ${it.indexDirection.sname}" }
+            append(" IF NOT EXISTS ${quoteColumnName("${tableName}_${indexName}")} ON ${quoteTableName(tableName)} (${packs.joinToString(", ")});")
+        }
+    }
+
+    open fun sqlInsert(tableName: String, keys: List<IColumnDef>): String {
+        return buildString {
+            append("INSERT INTO ")
+            append(quoteTableName(tableName))
+            append(" (")
+            append(keys.joinToString(", ") { quoteColumnName(it.name) })
+            append(") VALUES (")
+            append(keys.joinToString(", ") { "?" })
+            append(")")
+        }
+    }
+}
+
+open class SqliteDialect : SqlDialect() {
+    companion object : SqliteDialect()
+
+    override suspend fun showColumns(db: DbQueryable, table: String): List<IColumnDef> {
+        return db.query("PRAGMA table_info(${quoteTableName(table)});")
+                .map { SyntheticColumn<String>(it["name"]?.toString() ?: "-") }
+    }
 }
 
 open class MySqlDialect : SqlDialect() {
-    override val supportPrimaryIndex get() = true
     companion object : MySqlDialect()
+    override val supportPrimaryIndex get() = true
     override fun quoteColumnName(str: String) = _quote(str, '`')
     override fun quoteTableName(str: String) = _quote(str, '`')
 }

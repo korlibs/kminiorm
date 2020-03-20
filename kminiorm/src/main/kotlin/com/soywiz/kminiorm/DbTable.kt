@@ -91,7 +91,7 @@ interface DbTable<T : DbTableBaseElement> {
 
     fun <T> bindInstance(instance: T): T = db.bindInstance(instance)
 
-    suspend fun showColumns(): Map<String, Map<String, Any?>>
+    suspend fun showColumns(): Map<String, IColumnDef>
     suspend fun initialize(): DbTable<T> = this
     // C
     suspend fun insert(instance: T): T
@@ -115,7 +115,7 @@ interface DbTable<T : DbTableBaseElement> {
     // U
     suspend fun update(set: Partial<T>? = null, increment: Partial<T>? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long
     suspend fun upsert(instance: T): T {
-        val info = OrmTableInfo(instance::class)
+        val info = OrmTableInfo(db.dialect, instance::class)
         val props = info.columns
                 .filter { (it.isUnique || it.isPrimary) && (it.property.name != DbModel::_id.name) }
                 .map { it.property }
