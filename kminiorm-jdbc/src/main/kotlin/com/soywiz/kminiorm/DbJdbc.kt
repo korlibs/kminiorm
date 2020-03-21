@@ -18,8 +18,8 @@ import kotlin.coroutines.*
 import kotlin.reflect.*
 import kotlin.reflect.full.*
 
-//val DEBUG_JDBC = true
-val DEBUG_JDBC = false
+private val _DEBUG_JDBC = System.getenv("DEBUG_JDBC") == "true"
+private val _DEBUG_JDBC_RESULTS = System.getenv("DEBUG_JDBC_RESULTS") == "true"
 
 class WrappedConnection(val connectionIndex: Int, val connectionStr: String, val user: String?, val pass: String?, val timeout: Duration) {
     private var lastUsedTimestamp = 0L
@@ -55,6 +55,9 @@ class JdbcDb(
     // MySQL default timeout is 8 hours
     val connectionTimeout: Duration = Duration.ofHours(1L) // Reuse this connection during 1 hour, then reconnect
 ) : AbstractDb(dialect), DbBase, DbQuoteable by dialect {
+    val reallyDebugSQL get() = _DEBUG_JDBC || debugSQL
+    val reallyDebugSQLResults  get() = _DEBUG_JDBC_RESULTS
+
     override fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T> = DbJdbcTable(this, clazz)
 
     private var connectionIndex = AtomicInteger()
@@ -66,14 +69,27 @@ class JdbcDb(
     }
 
     override suspend fun <R> transaction(callback: suspend DbBaseTransaction.() -> R): R {
+        if (reallyDebugSQL) println("TRANSACTION START")
+        val startTime = System.currentTimeMillis()
         return connectionPool.take {
             try {
-                val tr = DbTransaction(this, it)
+                val tr = JdbcTransaction(this, it)
                 tr.run {
                     try {
-                        callback(tr).also { this@JdbcDb.commit() }
+                        callback(tr)
+                                .also {
+                                    this@JdbcDb.commit()
+                                    if (reallyDebugSQL) {
+                                        val time = System.currentTimeMillis() - startTime
+                                        println("TRANSACTION COMMIT[${time}ms]")
+                                    }
+                                }
                     } catch (e: Throwable) {
                         this@JdbcDb.rollback()
+                        if (reallyDebugSQL) {
+                            val time = System.currentTimeMillis() - startTime
+                            println("TRANSACTION ROLLBACK[${time}ms]: ${e.message}")
+                        }
                         throw e
                     }
                 }
@@ -92,19 +108,19 @@ class JdbcDb(
 }
 
 
-class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConnection) : DbBaseTransaction {
+class JdbcTransaction(override val db: JdbcDb, val wrappedConnection: WrappedConnection) : DbBaseTransaction {
     val connection get() = wrappedConnection.connection
 
     override suspend fun DbBase.commit(): Unit = if (db.async) {
-        withContext(context = dispatcher) { this@DbTransaction.connection.commit() }
+        withContext(context = dispatcher) { this@JdbcTransaction.connection.commit() }
     } else {
-        this@DbTransaction.connection.commit()
+        this@JdbcTransaction.connection.commit()
     }
 
     override suspend fun DbBase.rollback(): Unit = if (db.async) {
-        withContext(dispatcher) { this@DbTransaction.connection.rollback() }
+        withContext(dispatcher) { this@JdbcTransaction.connection.rollback() }
     } else {
-        this@DbTransaction.connection.rollback()
+        this@JdbcTransaction.connection.rollback()
     }
 
     companion object {
@@ -141,7 +157,7 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
                 else -> statement.executeQuery().use { it.toListMap() }
             }
             JdbcDbResult(statement.largeUpdateCountSafe, map).also { result ->
-                if (DEBUG_JDBC) println(" --> $result")
+                if (db.reallyDebugSQLResults) println(" --> $result")
             }
         }
     }
@@ -160,16 +176,16 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
             return results
         } finally {
             val time = System.currentTimeMillis() - startTime
-            if (DEBUG_JDBC || db.debugSQL) println("QUERY[${wrappedConnection.connectionIndex}][${time}ms] : $sql, ${paramsList.map { it.toList() }} --> ${results?.size}")
+            if (db.reallyDebugSQL) println("QUERY[${wrappedConnection.connectionIndex}][${time}ms] : $sql, ${paramsList.map { it.toList() }} --> ${results?.size}")
         }
     }
 }
 
 abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQueryable, ColumnExtra {
     abstract val table: DbJdbcTable<T>
+    override val db: JdbcDb get() = table.db
     override val typer get() = table.db.typer
-    private val _db get() = table.db
-    private val dialect get() = _db.dialect
+    private val dialect get() = db.dialect
     private val _quotedTableName get() = table.quotedTableName
 
     override suspend fun showColumns(): Map<String, IColumnDef> {
@@ -195,7 +211,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
                     }
                 }
                 if (result.isFailure) {
-                    if (_db.ignoreInitErrors) {
+                    if (db.ignoreInitErrors) {
                         result.exceptionOrNull()?.printStackTrace()
                     } else {
                         throw result.exceptionOrNull()!!
@@ -302,7 +318,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             append(" FROM ")
             append(_quotedTableName)
             append(" WHERE ")
-            append(rquery.toString(_db))
+            append(rquery.toString(db))
             if (sorted != null && sorted.isNotEmpty()) {
                 val orders = sorted.map { table.getColumnByProp(it.first)!!.quotedName + when { it.second > 0 -> " ASC"; it.second < 0 -> " DESC"; else -> "" } }
                 append(" ORDER BY ${orders.joinToString(", ")}")
@@ -327,7 +343,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             append(" FROM ")
             append(_quotedTableName)
             append(" WHERE ")
-            append(rquery.toString(_db))
+            append(rquery.toString(db))
             append(";")
         })
         // @TODO: Can we optimize this by streaming results?
@@ -348,7 +364,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             append(" FROM ")
             append(_quotedTableName)
             append(" WHERE ")
-            append(rquery.toString(_db))
+            append(rquery.toString(db))
             append(" GROUP BY ")
             append(groupColumnQuotedName)
             append(";")
@@ -374,7 +390,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             append(" SET ")
             append((setEntries.map { "${it.key.quotedName}=?" } + incrEntries.map { "${it.key.quotedName}=${it.key.quotedName}+?" }).joinToString(", "))
             append(" WHERE ")
-            append(DbQueryBuilder.build(query).toString(_db))
+            append(DbQueryBuilder.build(query).toString(db))
             if (limit != null) append(" LIMIT $limit")
             append(";")
         }, *values.toTypedArray()).updateCount

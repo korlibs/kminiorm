@@ -105,7 +105,7 @@ open class SqlDialect() : DbQuoteable {
     open fun toSqlType(type: KType, annotations: KAnnotatedElement? = null): String {
         return when (type.jvmErasure) {
             Int::class -> "INTEGER"
-            Long::class -> "INTEGER"
+            Long::class -> "BIGINT"
             ByteArray::class -> "BLOB"
             Date::class -> "TIMESTAMP"
             String::class -> {
@@ -279,7 +279,7 @@ open class SqliteDialect : SqlDialect() {
     //override fun quoteTableName(str: String) = "[$str]"
     //override fun quoteString(str: String) = _quote(str, type = '\'')
 
-    override val supportExtendedInsert = false
+    override val supportExtendedInsert = true
 
     override fun sqlInsertReplace(tableInfo: OrmTableInfo<*>, keys: List<IColumnDef>): SqlInsertInfo {
         var repeatCount = 0
