@@ -195,3 +195,21 @@ suspend fun <T : DbTableBaseElement> DbTable<T>.insert(vararg values: T, onConfl
 
 suspend fun <T : DbTableBaseElement> T.save(table: DbTable<T>): T = table.upsert(this)
 suspend inline fun <reified T : DbTableBaseElement> T.save(db: Db): T = save(db.uninitializedTable<T>())
+
+class UpdateSimpleBuilder<T : DbBaseModel> {
+    internal val sets = arrayListOf<Pair<KProperty1<T, *>, Any?>>()
+    internal val incrs = arrayListOf<Pair<KProperty1<T, *>, Any?>>()
+
+    fun <R> set(field: KProperty1<T, R>, value: R) {
+        sets += field to value
+    }
+    fun <R : Number> incr(field: KProperty1<T, R>, value: R) {
+        incrs += field to value
+    }
+}
+
+suspend fun <T : DbBaseModel> DbTable<T>.updateSimple(query: DbQueryBuilder<T>.() -> DbQuery<T>, build: UpdateSimpleBuilder<T>.() -> Unit): Long {
+    val builder = UpdateSimpleBuilder<T>()
+    build(builder)
+    return this.update(set = Partial(*builder.sets.toTypedArray(), clazz = clazz), increment = Partial(*builder.incrs.toTypedArray(), clazz = clazz), query = query)
+}
