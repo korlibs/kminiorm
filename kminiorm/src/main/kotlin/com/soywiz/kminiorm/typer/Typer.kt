@@ -263,6 +263,7 @@ open class Typer private constructor(
             DbStringRef::class -> DbStringRef<DbTableStringElement>()
             DbIntKey::class -> DbIntKey(0L)
             Date::class -> Date(0L)
+            UUID::class -> UUID(0L, 0L)
             LocalDate::class -> LocalDate.MIN
             else -> {
                 if (jclazz.isEnum) {

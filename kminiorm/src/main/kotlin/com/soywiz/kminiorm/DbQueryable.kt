@@ -1,5 +1,6 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.typer.Typer
 import kotlinx.coroutines.*
 import org.intellij.lang.annotations.*
 import java.sql.SQLException
@@ -104,6 +105,7 @@ open class SqlDialect() : DbQuoteable {
     open fun toSqlType(type: KType, annotations: KAnnotatedElement? = null): String {
         return when (type.jvmErasure) {
             Int::class -> "INTEGER"
+            Long::class -> "INTEGER"
             ByteArray::class -> "BLOB"
             Date::class -> "TIMESTAMP"
             String::class -> {
@@ -119,7 +121,7 @@ open class SqlDialect() : DbQuoteable {
         }
     }
 
-    open fun sqlCreateColumnDef(colName: String, type: KType, defaultValue: Any? = Unit, annotations: KAnnotatedElement? = null): String {
+    open fun sqlCreateColumnDef(typer: Typer, colName: String, type: KType, defaultValue: Any? = Unit, annotations: KAnnotatedElement? = null): String {
         return buildString {
             append(quoteColumnName(colName))
             append(" ")
@@ -128,17 +130,15 @@ open class SqlDialect() : DbQuoteable {
                 append(" NULL")
             } else {
                 append(" NOT NULL")
-                if (defaultValue != Unit) {
-                    append(" DEFAULT (")
-                    append(quoteLiteral(defaultValue))
-                    append(")")
-                }
+                append(" DEFAULT (")
+                append(quoteLiteral(if (defaultValue != Unit) defaultValue else typer.createDefault(type)))
+                append(")")
             }
         }
     }
 
-    open fun sqlCreateColumnDef(column: IColumnDef): String {
-        return sqlCreateColumnDef(column.name, column.columnType, column.defaultValue, column.annotatedElement)
+    open fun sqlCreateColumnDef(typer: Typer, column: IColumnDef): String {
+        return sqlCreateColumnDef(typer, column.name, column.columnType, column.defaultValue, column.annotatedElement)
         /*
         return buildString {
             append(quoteColumnName(column.name))
@@ -157,22 +157,22 @@ open class SqlDialect() : DbQuoteable {
          */
     }
 
-    open fun sqlCreateTable(table: String, columns: List<IColumnDef>): String {
+    open fun sqlCreateTable(typer: Typer, table: String, columns: List<IColumnDef>): String {
         return buildString {
             append("CREATE TABLE IF NOT EXISTS ")
             append(quoteTableName(table))
             append(" (")
-            append(columns.joinToString(", ") { sqlCreateColumnDef(it) })
+            append(columns.joinToString(", ") { sqlCreateColumnDef(typer, it) })
             append(");")
         }
     }
 
-    open fun sqlAlterTableAddColumn(table: String, column: IColumnDef): String {
+    open fun sqlAlterTableAddColumn(typer: Typer, table: String, column: IColumnDef): String {
         return buildString {
             append("ALTER TABLE ")
             append(quoteTableName(table))
             append(" ADD ")
-            append(sqlCreateColumnDef(column))
+            append(sqlCreateColumnDef(typer, column))
             append(";")
         }
     }

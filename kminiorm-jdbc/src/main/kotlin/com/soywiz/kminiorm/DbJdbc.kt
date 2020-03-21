@@ -107,7 +107,7 @@ class DbTransaction(override val db: DbBase, val wrappedConnection: WrappedConne
     }
 
     companion object {
-        val WRITE_QUERIES = listOf("UPDATE", "INSERT", "CREATE", "DELETE", "UPSERT")
+        val WRITE_QUERIES = listOf("UPDATE", "INSERT", "CREATE", "DELETE", "UPSERT", "ALTER")
     }
 
     @Suppress("ComplexRedundantLet")
@@ -177,7 +177,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
 
     @OptIn(ExperimentalStdlibApi::class)
     override suspend fun initialize(): DbTable<T> = this.apply {
-        query(dialect.sqlCreateTable(table.tableName, table.columnsWithExtrinsic))
+        query(dialect.sqlCreateTable(typer, table.tableName, table.columnsWithExtrinsic))
         try {
             val oldColumns = showColumns()
             //println("oldColumns: $oldColumns")
@@ -185,11 +185,12 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
                 if (column.name in oldColumns) continue // Do not add columns if they already exists
 
                 val result = kotlin.runCatching {
-                    query(dialect.sqlAlterTableAddColumn(table.tableName, column))
+                    query(dialect.sqlAlterTableAddColumn(typer, table.tableName, column))
                 }
                 if (result.isFailure) {
+                    result.exceptionOrNull()?.printStackTrace()
                     //throw result.exceptionOrNull()!!
-                    println(result.exceptionOrNull())
+                    //println(result.exceptionOrNull())
                 }
             }
         } catch (e: Throwable) {
@@ -198,7 +199,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
 
         if (table.hasExtrinsicData) {
             val result = kotlin.runCatching {
-                query(dialect.sqlAlterTableAddColumn(table.tableName, EXTRINSIC_COLUMN))
+                query(dialect.sqlAlterTableAddColumn(typer, table.tableName, EXTRINSIC_COLUMN))
             }
             if (result.isFailure) {
                 //throw result.exceptionOrNull()!!
