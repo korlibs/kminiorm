@@ -1,5 +1,7 @@
 dependencies {
-    api project(":kminiorm")
-    api "org.mongodb:mongodb-driver-async:3.10.1"
-    testCompile project(":kminiorm").sourceSets.test.output
+    add("api", project(":kminiorm"))
+    add("api", "org.mongodb:mongodb-driver-async:3.10.1")
+    add("testCompile", project(":kminiorm").sourceSets.test.output)
+    //add("testCompile", project(":kminiorm", "test"))//.sourceSets.test.output)
+    //sourceSets["test"].output
 }
