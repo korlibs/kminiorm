@@ -6,6 +6,7 @@
 @file:Repository(url = "https://jcenter.bintray.com/")
 @file:DependsOn("com.soywiz.kminiorm:kminiorm-jdbc:0.7.2")
 @file:DependsOn("org.xerial:sqlite-jdbc:3.30.1")
+@file:DependsOn("org.jetbrains.kotlin:kotlin-reflect:1.3.70")
 @file:CompilerOptions("-jvm-target", "1.8")
 
 import com.soywiz.kminiorm.*

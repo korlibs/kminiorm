@@ -43,7 +43,7 @@ table.where.ge(MyTable::value, 20L).limit(10).collect {
 You can use normal Kotlin fields
 
 ```kotlin
-class MyTable(
+data class MyTable(
     @DbPrimary val key: String,
     @DbIndex val value: Long
 ) : DbBaseModel
@@ -52,7 +52,7 @@ class MyTable(
 ### Multi-column indices
 
 ```kotlin
-class MyTable(
+data class MyTable(
     @DbUnique("a_b") val a: String,
     @DbUnique("a_b") val b: String
 ) : DbBaseModel
@@ -60,3 +60,23 @@ class MyTable(
 
 ## Creating a Repository
 
+## Migrations
+
+If you change a table adding a new field to it,
+you can register a DbMigration that will be executed
+when the ALTER TABLE is automatically performed.
+
+```kotlin
+data class MyTable(
+    val a: String,
+    @DbPerformMigration(MyAddColumnMigration::class) val newlyAddedField: String // 
+) : DbBaseModel {
+    class MyAddColumnMigration : DbMigration<MyTable> {
+        override suspend fun migrate(table: DbTable<MyTable>, action: DbMigration.Action, column: ColumnDef<MyTable>?) {
+            table.where.collect { item -> 
+                // Update item here ...
+            }
+        }
+    }
+}
+```
