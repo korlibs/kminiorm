@@ -20,7 +20,6 @@ class JdbcSqliteKMiniOrmTest : KMiniOrmBaseTests(JdbcDb("jdbc:sqlite::memory:", 
     }
 
     @Test
-    override fun testBoolean() {
-        // SKIP
-    }
+    @Ignore // @TODO: Ignored
+    override fun testBoolean() = super.testBoolean()
 }

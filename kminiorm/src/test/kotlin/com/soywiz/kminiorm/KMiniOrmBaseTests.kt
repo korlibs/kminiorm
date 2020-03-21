@@ -49,6 +49,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         val table = db.table<StoreTypesTable>().also { it.deleteAll() }
         table.insert(StoreTypesTable(false))
         table.insert(StoreTypesTable(true))
+        println(table.findAll())
         assertEquals(true, table.find { StoreTypesTable::bool eq true }.firstOrNull()?.bool)
         assertEquals(false, table.find { StoreTypesTable::bool eq false }.firstOrNull()?.bool)
     }
@@ -326,7 +327,8 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     @Test
     fun test200Insert() = suspendTest {
         val simples = db.table<BigTable>().apply { deleteAll() }
-        for (n in 0 until 200) simples.insert(BigTable(n))
+        //for (n in 0 until 200) simples.insert(BigTable(n))
+        simples.insert((0 until 200).map { BigTable(it) })
         assertEquals(200, simples.find { everything }.size)
     }
 

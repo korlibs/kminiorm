@@ -106,6 +106,8 @@ open class SqlDialect() : DbQuoteable {
         return when (type.jvmErasure) {
             Int::class -> "INTEGER"
             Long::class -> "BIGINT"
+            //Boolean::class -> "TINYINT"
+            Boolean::class -> "BOOLEAN"
             ByteArray::class -> "BLOB"
             Date::class -> "TIMESTAMP"
             String::class -> {
