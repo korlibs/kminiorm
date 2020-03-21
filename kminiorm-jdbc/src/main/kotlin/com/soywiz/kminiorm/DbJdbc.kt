@@ -51,6 +51,7 @@ class JdbcDb(
     dialect: SqlDialect = SqlDialect.ANSI,
     override val async: Boolean = true,
     val maxConnections: Int = 8,
+    val ignoreInitErrors: Boolean = false,
     // MySQL default timeout is 8 hours
     val connectionTimeout: Duration = Duration.ofHours(1L) // Reuse this connection during 1 hour, then reconnect
 ) : AbstractDb(dialect), DbBase, DbQuoteable by dialect {
@@ -185,11 +186,20 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
                 if (column.name in oldColumns) continue // Do not add columns if they already exists
 
                 val result = kotlin.runCatching {
-                    query(dialect.sqlAlterTableAddColumn(typer, table.tableName, column))
+                    transaction {
+                        query(dialect.sqlAlterTableAddColumn(typer, table.tableName, column))
+                        for (migrationAnnotation in column.migrations) {
+                            val instance = migrationAnnotation.migration.createInstance() as DbMigration<T>
+                            instance.migrate(table, DbMigration.Action.ADD_COLUMN, column)
+                        }
+                    }
                 }
                 if (result.isFailure) {
-                    result.exceptionOrNull()?.printStackTrace()
-                    //throw result.exceptionOrNull()!!
+                    if (_db.ignoreInitErrors) {
+                        result.exceptionOrNull()?.printStackTrace()
+                    } else {
+                        throw result.exceptionOrNull()!!
+                    }
                     //println(result.exceptionOrNull())
                 }
             }

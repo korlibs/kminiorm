@@ -178,3 +178,6 @@ suspend fun <T : DbTableIntElement> DbTable<T>.findByIntId(id: DbIntRef<T>): T? 
 suspend fun <T : DbTableStringElement> DbTable<T>.findByIntId(id: DbStringRef<T>): T? = findOne { DbQuery.BinOp(DbStringModel::id as KProperty1<T, DbStringRef<*>>, id, DbQueryBinOp.EQ) }
 suspend fun <T : DbTableBaseElement> DbTable<T>.findOrCreate(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }, build: () -> T): T = findOne(query) ?: build().also { insert(it) }
 suspend fun <T : DbTableBaseElement> DbTable<T>.insert(vararg values: T, onConflict: DbOnConflict = DbOnConflict.ERROR) = insert(values.toList(), onConflict)
+
+suspend fun <T : DbTableBaseElement> T.save(table: DbTable<T>): T = table.upsert(this)
+suspend inline fun <reified T : DbTableBaseElement> T.save(db: Db): T = save(db.uninitializedTable<T>())

@@ -103,7 +103,7 @@ data class SyntheticColumn(
 @OptIn(ExperimentalStdlibApi::class)
 inline fun <reified T> SyntheticColumn(name: String, defaultValue: Any? = Unit, annotatedElement: KAnnotatedElement? = null) = SyntheticColumn(name, typeOf<T>(), defaultValue, annotatedElement)
 
-class ColumnDef<T : Any>(val dialect: SqlDialect, val property: KProperty1<T, *>) : IColumnDef {
+class ColumnDef<T : Any>(val ormTableInfo: OrmTableInfo<T>, val dialect: SqlDialect, val property: KProperty1<T, *>) : IColumnDef {
     val jclazz get() = property.returnType.jvmErasure
     override val name = property.findAnnotation<DbName>()?.name ?: property.name
     override val columnType get() = property.returnType
@@ -130,19 +130,27 @@ class ColumnDef<T : Any>(val dialect: SqlDialect, val property: KProperty1<T, *>
 
     val indexName = unique?.name?.takeIf { it.isNotEmpty() } ?: index?.name?.takeIf { it.isNotEmpty() } ?: name
 
-    val indexDirection get() =
+    val indexDirection by lazy {
         property.findAnnotation<DbPrimary>()?.direction
                 ?: property.findAnnotation<DbUnique>()?.direction
                 ?: property.findAnnotation<DbIndex>()?.direction
                 ?: DbIndexDirection.ASC
+    }
+
+    val migrations by lazy {
+        ormTableInfo.migrations + listOfNotNull(property.findAnnotation<DbPerformMigration>())
+    }
 }
 
 class OrmTableInfo<T : Any>(val dialect: SqlDialect, val clazz: KClass<T>) {
     val tableName = clazz.findAnnotation<DbName>()?.name ?: clazz.simpleName ?: error("$clazz doesn't have name")
-    val columns = clazz.memberProperties.filter { it.findAnnotation<DbIgnore>() == null && !it.name.startsWith("__") }.map { ColumnDef(dialect, it) }
+    val columns = clazz.memberProperties.filter { it.findAnnotation<DbIgnore>() == null && !it.name.startsWith("__") }.map { ColumnDef(this, dialect, it) }
     val columnIndices = columns.filter { it.isAnyIndex }.sortedBy { it.indexOrder }.groupBy { it.indexName }
     val columnUniqueIndices = columns.filter { it.isPrimaryOrUnique }.sortedBy { it.indexOrder }.groupBy { it.indexName }
     val columnsByName = columns.associateBy { it.name }
+    val migrations by lazy {
+        listOfNotNull(clazz.findAnnotation<DbPerformMigration>())
+    }
     fun getColumnByName(name: String) = columnsByName[name]
     fun getColumnByProp(prop: KProperty1<T, *>) = getColumnByName(prop.name)
 }

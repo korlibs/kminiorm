@@ -1,5 +1,7 @@
 package com.soywiz.kminiorm
 
+import kotlin.reflect.KClass
+
 @Target(AnnotationTarget.PROPERTY)
 annotation class DbMaxLength(val length: Int)
 
@@ -22,3 +24,6 @@ enum class DbIndexDirection(val sname: String, val sign: Int) {
     ASC("ASC", +1),
     DESC("DESC", -1)
 }
+
+@Target(AnnotationTarget.PROPERTY, AnnotationTarget.CLASS)
+annotation class DbPerformMigration(val migration: KClass<out DbMigration<*>>)
