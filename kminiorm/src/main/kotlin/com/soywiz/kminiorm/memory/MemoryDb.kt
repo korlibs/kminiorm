@@ -1,6 +1,7 @@
 package com.soywiz.kminiorm.memory
 
 import com.soywiz.kminiorm.*
+import com.soywiz.kminiorm.dialect.SqlDialect
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -8,9 +9,9 @@ import kotlin.coroutines.*
 import kotlin.reflect.*
 
 class MemoryDb(
-    val typer: Typer = DbTyper,
-    dialect: SqlDialect = SqlDialect,
-    override val dispatcher: CoroutineContext = Dispatchers.IO
+        val typer: Typer = DbTyper,
+        dialect: SqlDialect = SqlDialect,
+        override val dispatcher: CoroutineContext = Dispatchers.IO
 ) : AbstractDb(dialect), DbBase, DbQuoteable by dialect {
     override fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T> = MemoryDbTable(this, clazz, typer)
 

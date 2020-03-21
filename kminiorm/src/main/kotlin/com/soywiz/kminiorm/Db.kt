@@ -1,5 +1,6 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.dialect.SqlDialect
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
 import java.sql.*

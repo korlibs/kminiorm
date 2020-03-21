@@ -5,6 +5,7 @@ import com.mongodb.async.*
 import com.mongodb.async.client.*
 import com.mongodb.client.model.*
 import com.mongodb.client.result.*
+import com.soywiz.kminiorm.dialect.SqlDialect
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.*

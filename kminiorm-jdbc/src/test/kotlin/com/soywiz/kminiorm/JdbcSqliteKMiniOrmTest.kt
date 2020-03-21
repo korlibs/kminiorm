@@ -1,5 +1,6 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.dialect.SqliteDialect
 import kotlin.test.*
 
 class JdbcSqliteKMiniOrmTest : KMiniOrmBaseTests(JdbcDb("jdbc:sqlite::memory:", "", "", async = false, debugSQL = true, dialect = SqliteDialect)) {

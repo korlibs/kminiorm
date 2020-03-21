@@ -1,5 +1,6 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.dialect.SqlDialect
 import com.soywiz.kminiorm.internal.*
 import com.soywiz.kminiorm.typer.*
 import kotlinx.coroutines.*
@@ -43,17 +44,17 @@ class WrappedConnection(val connectionIndex: Int, val connectionStr: String, val
 
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
 class JdbcDb(
-    val connection: String,
-    val user: String? = null, val pass: String? = null,
-    override val dispatcher: CoroutineContext = Dispatchers.IO,
-    val typer: Typer = JdbcDbTyper,
-    override val debugSQL: Boolean = false,
-    dialect: SqlDialect = SqlDialect.ANSI,
-    override val async: Boolean = true,
-    val maxConnections: Int = 8,
-    val ignoreInitErrors: Boolean = false,
+        val connection: String,
+        val user: String? = null, val pass: String? = null,
+        override val dispatcher: CoroutineContext = Dispatchers.IO,
+        val typer: Typer = JdbcDbTyper,
+        override val debugSQL: Boolean = false,
+        dialect: SqlDialect = SqlDialect.ANSI,
+        override val async: Boolean = true,
+        val maxConnections: Int = 8,
+        val ignoreInitErrors: Boolean = false,
     // MySQL default timeout is 8 hours
-    val connectionTimeout: Duration = Duration.ofHours(1L) // Reuse this connection during 1 hour, then reconnect
+        val connectionTimeout: Duration = Duration.ofHours(1L) // Reuse this connection during 1 hour, then reconnect
 ) : AbstractDb(dialect), DbBase, DbQuoteable by dialect {
     val reallyDebugSQL get() = _DEBUG_JDBC || debugSQL
     val reallyDebugSQLResults  get() = _DEBUG_JDBC_RESULTS
