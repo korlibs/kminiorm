@@ -53,4 +53,5 @@ data class DbTableWhere<T : DbTableBaseElement>(
 val <T : DbTableBaseElement> DbTable<T>.where get() = DbTableWhere(this)
 
 // @TODO: Can we do this without converting to list?
-suspend operator fun <T> Flow<T>.iterator() = this.toList().listIterator()
+//@Deprecated("")
+//suspend operator fun <T> Flow<T>.iterator() = this.toList().listIterator()

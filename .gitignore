@@ -4,3 +4,4 @@
 /.gradle
 *.mv.db
 *.trace.db
+/stale_outputs_checked
