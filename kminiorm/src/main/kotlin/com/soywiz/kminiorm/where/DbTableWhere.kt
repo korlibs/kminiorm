@@ -13,6 +13,7 @@ data class DbTableWhere<T : DbTableBaseElement>(
     private val sorted: List<Pair<KProperty1<T, *>, Int>>? = null,
     private val skip: Long? = null,
     private val limit: Long? = null,
+    private val chunkSize: Int? = null,
     private val andClauses: List<DbQuery<T>> = emptyList()
 ) : Flow<T> {
     fun fields(vararg fields: KProperty1<T, *>) = this.copy(fields = fields.toList())
@@ -23,6 +24,8 @@ data class DbTableWhere<T : DbTableBaseElement>(
 
     inline fun skip(count: Number) = this.copy(skip = count.toLong())
     inline fun limit(count: Number) = this.copy(limit = count.toLong())
+
+    inline fun chunkSize(chunkSize: Number) = this.copy(chunkSize = chunkSize.toInt())
 
     @PublishedApi
     internal val _andClauses get() = andClauses
@@ -37,18 +40,36 @@ data class DbTableWhere<T : DbTableBaseElement>(
     inline fun <R : Comparable<R>> between(field: KProperty1<T, R>, value: ClosedRange<R>) = where { field BETWEEN value }
     inline fun <R : Comparable<R>> IN(field: KProperty1<T, R>, values: List<R>) = where { field IN values }
 
-    private var findCache: List<T>? = null
-    private val lock = Mutex()
-    suspend fun find(): List<T> = lock.withLock {
-        if (findCache == null) {
-            findCache = table.find(skip = skip, limit = limit, fields = fields, sorted = sorted, query = { AND(andClauses) })
+    private var flowCache: Flow<T>? = null
+    private val flowLock = Mutex()
+
+    suspend fun findFlow(): Flow<T> = flowLock.withLock {
+        if (flowCache == null) {
+            val chunkSize = chunkSize ?: 16
+            flowCache = table.findChunked(
+                skip = skip, limit = limit,
+                fields = fields, sorted = sorted,
+                chunkSize = chunkSize,
+                query = { AND(andClauses) }
+            ).buffer(chunkSize)
         }
-        findCache!!
+        flowCache!!
     }
 
-    suspend operator fun iterator() = find().toList().iterator()
+    private var listCache: List<T>? = null
+    private val listLock = Mutex()
+    suspend fun find(): List<T> = listLock.withLock {
+        if (listCache == null) {
+            listCache = findFlow().toList()
+        }
+        listCache!!
+    }
+
+    // @TODO: Don't do this, since we cannot use it on big sequences
+    //suspend operator fun iterator() = find().toList().iterator()
+
     @InternalCoroutinesApi
-    override suspend fun collect(collector: FlowCollector<T>) = find().asFlow().collect(collector)
+    override suspend fun collect(collector: FlowCollector<T>) = findFlow().collect(collector)
 }
 
 val <T : DbTableBaseElement> DbTable<T>.where get() = DbTableWhere(this)

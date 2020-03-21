@@ -155,7 +155,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         //table.update(Partial(mapOf("list" to listOf("000000000000000000000001", "000000000000000000000002")), ArrayOfDbKey::class)) { id(item._id) }
     }
 
-    data class MultiInsertTest(@DbUnique val a: String, val value: Int) : DbBaseModel {
+    data class MultiInsertTest(@DbUnique val a: String, @DbIndex val value: Int) : DbBaseModel {
         override fun toString(): String = "($a, $value)"
     }
 
@@ -453,5 +453,18 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals("[(a, 1), (b, 1), (c, 1)]", table.findAll().sortedBy { it.a }.toString())
         table.insert(MultiInsertTest("a", 4), MultiInsertTest("b", 4), MultiInsertTest("c", 4), onConflict = DbOnConflict.REPLACE)
         assertEquals("[(a, 4), (b, 4), (c, 4)]", table.findAll().sortedBy { it.a }.toString())
+    }
+
+    @Test
+    fun testDbWhere() = suspendTest {
+        val table = db.table<MultiInsertTest>()
+        table.deleteAll()
+        table.insert(MultiInsertTest("a", 1), MultiInsertTest("b", 1), MultiInsertTest("c", 2))
+        table.insert(MultiInsertTest("d", 2), MultiInsertTest("e", 3), MultiInsertTest("f", 3))
+
+        val baseQuery = table.where.eq(MultiInsertTest::value, 1)
+        assertEquals(2, baseQuery.count())
+        assertEquals(1, baseQuery.eq(MultiInsertTest::a, "b").count())
+        assertEquals(listOf("b", "a"), baseQuery.sorted(MultiInsertTest::a to -1).map { it.a }.toList())
     }
 }

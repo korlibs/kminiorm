@@ -127,15 +127,23 @@ interface DbTable<T : DbTableBaseElement> {
     suspend fun find(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): List<T> = findFlow(skip, limit, fields, sorted, query).toList()
     suspend fun findAll(skip: Long? = null, limit: Long? = null): List<T> = find(skip = skip, limit = limit)
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query = query, limit = 1).firstOrNull()
-    suspend fun findChunked(fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, chunkSize: Int = 10, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<T> {
+    suspend fun findChunked(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, chunkSize: Int = 16, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<T> {
         val table = this
         return flow {
-            var offset = 0L
-            while (true) {
+            var offset = skip ?: 0L
+            var totalEmitted = 0L
+            loop@while (true) {
                 val results = table.find(skip = offset, limit = chunkSize.toLong(), fields = fields, sorted = sorted, query = query)
                 if (results.isEmpty()) break
                 offset += results.size
-                for (result in results) emit(result)
+                for (result in results) {
+                    emit(result)
+                    totalEmitted++
+                    if (limit != null && totalEmitted >= limit) {
+                        break@loop
+                    }
+                }
+
                 //delay(0L)
             }
         }
