@@ -1,10 +1,12 @@
 #!/usr/bin/env kotlin
+
+//curl -s "https://get.sdkman.io" | bash
+//sdk install kotlin
+
 @file:Repository(url = "https://jcenter.bintray.com/")
 @file:DependsOn("com.soywiz.kminiorm:kminiorm-jdbc:0.7.2")
 @file:DependsOn("org.xerial:sqlite-jdbc:3.30.1")
 @file:CompilerOptions("-jvm-target", "1.8")
-
-//sudo snap install kotlin --classic
 
 import com.soywiz.kminiorm.*
 import com.soywiz.kminiorm.dialect.SqliteDialect
@@ -20,6 +22,7 @@ data class MyTable(
 
 runBlocking {
     val sqliteFile = File("sample.sq3")
+
     val db = JdbcDb(
             "jdbc:sqlite:${sqliteFile.absoluteFile.toURI()}",
             debugSQL = System.getenv("DEBUG_SQL") == "true",
@@ -35,10 +38,25 @@ runBlocking {
             MyTable("is", 40L),
             MyTable("a", 50L),
             MyTable("test", 60L),
-            onConflict = DbOnConflict.IGNORE
+            onConflict = DbOnConflict.REPLACE
     )
 
-    table.where.ge(MyTable::value, 20L).limit(10).collect {
+    val baseQuery = table.where
+            .ge(MyTable::value, 20L)
+            .sorted(MyTable::value to +1)
+
+    baseQuery.limit(4).collect {
         println(it)
     }
+
+    table.findOne { MyTable::key eq "hello" }!!
+        .copy(value = 70L)
+        .save(table)
+
+    println("UPDATED HELLO")
+
+    baseQuery.limit(10).collect {
+        println(it)
+    }
+
 }
