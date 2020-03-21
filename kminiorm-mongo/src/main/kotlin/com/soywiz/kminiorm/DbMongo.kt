@@ -95,7 +95,7 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
     }
 
     override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Flow<Partial<T>> {
-        val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject(db)
+        val rquery = queryBuilder.build(query).toMongoMap().toJsonObject(db)
         val wantsId = fields?.any { it.name == "_id" } ?: true
         if (DEBUG_MONGO) println("QUERY: $rquery")
         val result = dbCollection.find(rquery)
@@ -146,7 +146,7 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
         })
         if (updateMap.isEmpty()) return 0L
         val result = awaitMongo<UpdateResult> {
-            val bson = DbQueryBuilder.build(query).toMongoMap().toJsonObject(db)
+            val bson = queryBuilder.build(query).toMongoMap().toJsonObject(db)
             if (db.debug) {
                 println("DbMongo.update: $bson")
             }
@@ -160,7 +160,7 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
     }
 
     override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        val rquery = DbQueryBuilder.build(query).toMongoMap().toJsonObject(db)
+        val rquery = queryBuilder.build(query).toMongoMap().toJsonObject(db)
         val result = awaitMongo<DeleteResult> { dbCollection.deleteMany(rquery, it) }
         return result.deletedCount
     }

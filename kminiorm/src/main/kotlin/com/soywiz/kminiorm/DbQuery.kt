@@ -30,13 +30,11 @@ abstract class DbQuery<T> {
     data class Raw<T>(val map: Map<String, Any?>) : DbQuery<T>()
 }
 
-open class DbQueryBuilder<T> {
+open class DbQueryBuilder<T : DbBaseModel>(val table: DbTable<T>) {
     val NEVER by lazy { DbQuery.Never<T>() }
-    companion object : DbQueryBuilder<Any>() {
-        fun <T> builder() = DbQueryBuilder as DbQueryBuilder<T>
-        fun <T> build(query: DbQueryBuilder<T>.() -> DbQuery<T>): DbQuery<T> = query(builder())
-        fun <T> buildOrNull(query: DbQueryBuilder<T>.() -> DbQuery<T>) = build(query).takeIf { (it !is DbQuery.Never<*>) }
-    }
+
+    fun build(query: DbQueryBuilder<T>.() -> DbQuery<T>): DbQuery<T> = query(this)
+    fun buildOrNull(query: DbQueryBuilder<T>.() -> DbQuery<T>) = build(query).takeIf { (it !is DbQuery.Never<*>) }
 
     fun id(id: DbKey) = DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ)
     fun raw(map: Map<String, Any?>) = DbQuery.Raw<T>(map)
@@ -58,4 +56,9 @@ open class DbQueryBuilder<T> {
     infix fun <R : Comparable<R>> KProperty1<@Exact T, @Exact R?>.BETWEEN(literal: ClosedRange<R>) = ((this as KProperty1<@Exact T, @Exact R>) ge (literal.start)) AND (this le literal.endInclusive)
     val everything get() = DbQuery.Always<T>()
     val nothing get() = DbQuery.Never<T>()
+
+    fun auto(instance: T): DbQuery<T> {
+        val uniqueColumns = table.ormTableInfo.columnUniqueIndices.values.flatten()
+        return AND(uniqueColumns.map { column -> column.property eq column.property.get(instance) })
+    }
 }

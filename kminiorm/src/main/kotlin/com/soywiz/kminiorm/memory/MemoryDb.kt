@@ -78,7 +78,7 @@ class MemoryDbTable<T : DbTableBaseElement>(
         sorted: List<Pair<KProperty1<T, *>, Int>>?,
         query: DbQueryBuilder<T>.() -> DbQuery<T>
     ): Flow<Partial<T>> = flow {
-        val realQuery = query(DbQueryBuilder.builder<T>())
+        val realQuery = query(queryBuilder)
         var skipCount = skip ?: 0L
         val maxLimit = limit ?: Long.MAX_VALUE
         var emitCount = 0L
@@ -119,7 +119,7 @@ class MemoryDbTable<T : DbTableBaseElement>(
 
     @Synchronized
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        val realQuery = query(DbQueryBuilder.builder())
+        val realQuery = query(queryBuilder)
         var updatedCount = 0L
         for (instanceIndex in instances.indices) {
             if (!realQuery.matches(instances[instanceIndex])) continue
@@ -148,7 +148,7 @@ class MemoryDbTable<T : DbTableBaseElement>(
 
     @Synchronized
     override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        val realQuery = query(DbQueryBuilder.builder())
+        val realQuery = query(queryBuilder)
 
         var count = 0L
         instances

@@ -1,7 +1,6 @@
 package com.soywiz.kminiorm
 
 import com.soywiz.kminiorm.typer.*
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlin.reflect.*
 
@@ -79,7 +78,7 @@ suspend fun <T : DbTableIntElement> DbIntRef<T>.resolved(table: DbTable<T>): T? 
 suspend inline fun <reified T : DbTableIntElement> DbIntRef<T>.resolved(db: Db): T? = resolved(db.uninitializedTable(T::class))
 
 abstract class AbstractDbTable<T : DbTableBaseElement> : DbTable<T> {
-    abstract val ormTableInfo: OrmTableInfo<T>
+    override val queryBuilder: DbQueryBuilder<T> by lazy { DbQueryBuilder(this) }
     override val typerForClass: ClassTyper<T> by lazy { typer.typerForClass(clazz) }
 }
 
@@ -88,7 +87,10 @@ enum class DbOnConflict { ERROR, IGNORE, REPLACE }
 //interface DbTable<T : Any> {
 interface DbTable<T : DbTableBaseElement> {
     companion object
+
+    val queryBuilder: DbQueryBuilder<T>
     val db: Db
+    val ormTableInfo: OrmTableInfo<T>
     val clazz: KClass<T>
     val typer: Typer
     val typerForClass: ClassTyper<T>
@@ -97,6 +99,7 @@ interface DbTable<T : DbTableBaseElement> {
 
     suspend fun showColumns(): Map<String, IColumnDef>
     suspend fun initialize(): DbTable<T> = this
+
     // C
     suspend fun insert(instance: T): T
     suspend fun insert(instance: Partial<T>): DbResult = insert(instance.data)
@@ -104,13 +107,14 @@ interface DbTable<T : DbTableBaseElement> {
         insert(typerForClass.type(data))
         return DbResult(mapOf("insert" to 1))
     }
-    suspend fun insertIgnore(value: T): Unit = run { kotlin.runCatching { insert(value) } }
+
+    suspend fun insertIgnore(value: T): Unit = insert(value, onConflict = DbOnConflict.IGNORE)
     suspend fun insert(instances: List<T>, onConflict: DbOnConflict = DbOnConflict.ERROR) {
         transaction {
             when (onConflict) {
                 DbOnConflict.ERROR -> for (instance in instances) insert(instance)
-                DbOnConflict.IGNORE -> for (instance in instances) insertIgnore(instance)
-                DbOnConflict.REPLACE -> for (instance in instances) upsert(instance)
+                DbOnConflict.IGNORE -> for (instance in instances) runCatching { insert(instance) }
+                DbOnConflict.REPLACE -> for (instance in instances) upsertGetNew(instance)
             }
         }
     }
@@ -118,7 +122,8 @@ interface DbTable<T : DbTableBaseElement> {
     // R
     suspend fun findFlowPartial(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<Partial<T>>
     suspend fun findFlow(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Flow<T> = findFlowPartial(skip, limit, fields, sorted, query)
-        .map { bindInstance(typerForClass.type(it.data)) }
+            .map { bindInstance(typerForClass.type(it.data)) }
+
     suspend fun find(skip: Long? = null, limit: Long? = null, fields: List<KProperty1<T, *>>? = null, sorted: List<Pair<KProperty1<T, *>, Int>>? = null, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): List<T> = findFlow(skip, limit, fields, sorted, query).toList()
     suspend fun findAll(skip: Long? = null, limit: Long? = null): List<T> = find(skip = skip, limit = limit)
     suspend fun findOne(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): T? = find(query = query, limit = 1).firstOrNull()
@@ -135,19 +140,24 @@ interface DbTable<T : DbTableBaseElement> {
             }
         }
     }
+
     suspend fun count(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Long = this.find(query = query).size.toLong()
     suspend fun <R> countGrouped(groupedBy: KProperty1<T, R>, query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }): Map<R, Long> =
-        this.find(query = query).groupBy { groupedBy.get(it) }.map { it.key to it.value.size.toLong()}.toMap()
+            this.find(query = query).groupBy { groupedBy.get(it) }.map { it.key to it.value.size.toLong() }.toMap()
+
     // U
     suspend fun update(set: Partial<T>? = null, increment: Partial<T>? = null, limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long
-    suspend fun upsert(instance: T): T {
+    suspend fun upsert(instance: T) = insert(instance, onConflict = DbOnConflict.REPLACE)
+
+    suspend fun upsertGetNew(instance: T): T {
         val info = OrmTableInfo(db.dialect, instance::class)
         val props = info.columns
-                .filter { (it.isUnique || it.isPrimary) && (it.property.name != DbModel::_id.name) }
+                .filter { it.isPrimaryOrUnique && (it.property.name != DbModel::_id.name) }
                 .map { it.property }
                 .toTypedArray() as Array<KProperty1<T, *>>
         return upsertWithProps(instance, *props)
     }
+
     suspend fun upsertWithProps(instance: T, vararg props: KProperty1<T, *>): T {
         if (props.isEmpty()) error("Must specify keys for the upsert")
 
@@ -156,7 +166,7 @@ interface DbTable<T : DbTableBaseElement> {
         try {
             return insert(instance)
         } catch (e: DuplicateKeyDbException) {
-            val query = DbQueryBuilder.build<T> {
+            val query = queryBuilder.build {
                 var out: DbQuery<T> = nothing
                 for (prop in props) {
                     val value = instancePartial[prop]
@@ -193,8 +203,8 @@ suspend fun <T : DbTableStringElement> DbTable<T>.findByIntId(id: DbStringRef<T>
 suspend fun <T : DbTableBaseElement> DbTable<T>.findOrCreate(query: DbQueryBuilder<T>.() -> DbQuery<T> = { everything }, build: () -> T): T = findOne(query) ?: build().also { insert(it) }
 suspend fun <T : DbTableBaseElement> DbTable<T>.insert(vararg values: T, onConflict: DbOnConflict = DbOnConflict.ERROR) = insert(values.toList(), onConflict)
 
-suspend fun <T : DbTableBaseElement> T.save(table: DbTable<T>): T = table.upsert(this)
-suspend inline fun <reified T : DbTableBaseElement> T.save(db: Db): T = save(db.uninitializedTable<T>())
+suspend fun <T : DbTableBaseElement> T.save(table: DbTable<T>) = table.upsert(this)
+suspend inline fun <reified T : DbTableBaseElement> T.save(db: Db) = save(db.uninitializedTable<T>())
 
 class UpdateSimpleBuilder<T : DbBaseModel> {
     internal val sets = arrayListOf<Pair<KProperty1<T, *>, Any?>>()

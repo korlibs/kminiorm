@@ -308,7 +308,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
     }
 
     override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Flow<Partial<T>> {
-        val rquery = DbQueryBuilder.buildOrNull(query) ?: return listOf<Partial<T>>().asFlow()
+        val rquery = queryBuilder.buildOrNull(query) ?: return listOf<Partial<T>>().asFlow()
         val data = query(buildString {
             append("SELECT ")
             if (fields != null) {
@@ -337,7 +337,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
     }
 
     override suspend fun count(query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        val rquery = DbQueryBuilder.buildOrNull(query) ?: return 0L
+        val rquery = queryBuilder.buildOrNull(query) ?: return 0L
         val data = query(buildString {
             append("SELECT ")
             append("COUNT(*)")
@@ -352,7 +352,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
     }
 
     override suspend fun <R> countGrouped(groupedBy: KProperty1<T, R>, query: DbQueryBuilder<T>.() -> DbQuery<T>): Map<R, Long> {
-        val rquery = DbQueryBuilder.buildOrNull(query) ?: return mapOf()
+        val rquery = queryBuilder.buildOrNull(query) ?: return mapOf()
         val keyAlias = "__k1"
         val countAlias = "__c1"
         val groupedByCol = table.getColumnByProp(groupedBy) ?: error("Can't find column '$groupedBy'")
@@ -391,14 +391,14 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             append(" SET ")
             append((setEntries.map { "${it.key.quotedName}=?" } + incrEntries.map { "${it.key.quotedName}=${it.key.quotedName}+?" }).joinToString(", "))
             append(" WHERE ")
-            append(DbQueryBuilder.build(query).toString(db))
+            append(queryBuilder.build(query).toString(db))
             if (limit != null) append(" LIMIT $limit")
             append(";")
         }, *values.toTypedArray()).updateCount
     }
 
     override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        return query(dialect.sqlDelete(table.tableName, DbQueryBuilder.build(query), limit)).updateCount
+        return query(dialect.sqlDelete(table.tableName, queryBuilder.build(query), limit)).updateCount
     }
 }
 

@@ -92,7 +92,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         val b = UpsertTestModel("test", "b", _id = DbKey("000000000000000000000002"))
         table.deleteAll()
         table.insert(a)
-        val c = table.upsert(b)
+        val c = table.upsertGetNew(b)
         //println(table.find { everything }.joinToString("\n"))
         assertEquals(1, table.find { everything }.count())
         assertEquals("UpsertTestModel(name=test, value=a, _id=000000000000000000000001)", a.toString())

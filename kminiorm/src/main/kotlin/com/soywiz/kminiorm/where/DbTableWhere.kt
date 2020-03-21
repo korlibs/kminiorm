@@ -7,7 +7,8 @@ import kotlinx.coroutines.sync.*
 import kotlin.reflect.*
 
 data class DbTableWhere<T : DbTableBaseElement>(
-    private val table: DbTable<T>,
+    @PublishedApi
+    internal val table: DbTable<T>,
     private val fields: List<KProperty1<T, *>>? = null,
     private val sorted: List<Pair<KProperty1<T, *>, Int>>? = null,
     private val skip: Long? = null,
@@ -26,7 +27,7 @@ data class DbTableWhere<T : DbTableBaseElement>(
     @PublishedApi
     internal val _andClauses get() = andClauses
 
-    inline fun where(query: DbQueryBuilder<T>.() -> DbQuery<T>) = this.copy(andClauses = _andClauses + query(DbQueryBuilder.builder()))
+    inline fun where(query: DbQueryBuilder<T>.() -> DbQuery<T>) = this.copy(andClauses = _andClauses + query(table.queryBuilder))
     inline fun <R> eq(field: KProperty1<T, R>, value: R) = where { field eq value }
     inline fun <R> ne(field: KProperty1<T, R>, value: R) = where { field ne value }
     inline fun <R : Comparable<R>?> gt(field: KProperty1<T, R>, value: R) = where { field gt value }
