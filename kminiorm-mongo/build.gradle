@@ -1,9 +1,5 @@
 dependencies {
-    def vertx_version = "3.8.1"
-    implementation project(":kminiorm")
-    //implementation "io.vertx:vertx-lang-kotlin-coroutines:$vertx_version"
-    //implementation "io.vertx:vertx-mongo-client:$vertx_version"
-    implementation "org.mongodb:mongodb-driver-async:3.10.1"
-    //implementation "org.mongodb:mongodb-driver-reactivestreams:1.12.0"
+    api project(":kminiorm")
+    api "org.mongodb:mongodb-driver-async:3.10.1"
     testCompile project(":kminiorm").sourceSets.test.output
 }

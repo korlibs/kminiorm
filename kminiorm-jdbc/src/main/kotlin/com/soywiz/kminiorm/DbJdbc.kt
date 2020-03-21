@@ -132,7 +132,8 @@ class JdbcTransaction(override val db: JdbcDb, val wrappedConnection: WrappedCon
     internal fun _query(sql: String, paramsList: List<Array<out Any?>>): DbResult {
         if (paramsList.isEmpty()) error("Query doesn't have parameters")
         val isWrite = WRITE_QUERIES.any { sql.startsWith(it, ignoreCase = true) }
-        return connection.prepareStatement(sql).use { statement ->
+        val statement = connection.prepareStatement(sql)
+        return try {
             val hasMultiple = paramsList.size > 1
             for (params in paramsList) {
                 for (index in params.indices) {
@@ -155,11 +156,20 @@ class JdbcTransaction(override val db: JdbcDb, val wrappedConnection: WrappedCon
                     val updateCount: Int = if (hasMultiple) statement.executeBatch().sum() else statement.executeUpdate()
                     listOf(mapOf("updateCount" to updateCount.toLong()))
                 }
-                else -> statement.executeQuery().use { it.toListMap() }
+                else -> {
+                    val resultSet = statement.executeQuery()
+                    try {
+                        resultSet.toListMap()
+                    } finally {
+                        resultSet.close()
+                    }
+                }
             }
             JdbcDbResult(statement.largeUpdateCountSafe, map).also { result ->
                 if (db.reallyDebugSQLResults) println(" --> $result")
             }
+        } finally {
+            statement.close()
         }
     }
 

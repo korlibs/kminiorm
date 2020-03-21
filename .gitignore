@@ -5,3 +5,4 @@
 *.mv.db
 *.trace.db
 /stale_outputs_checked
+/sample.sq3

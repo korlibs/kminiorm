@@ -21,12 +21,15 @@ subprojects {
     apply plugin: 'kotlin'
     apply plugin: 'maven-publish'
 
+    //def javaVersion = "1.8"
+    def javaVersion = "1.6"
+
     group = 'com.soywiz.kminiorm'
-    sourceCompatibility = 1.8
+    sourceCompatibility = javaVersion
 
     configure([compileKotlin, compileTestKotlin]) {
         kotlinOptions {
-            jvmTarget = "1.8"
+            jvmTarget = javaVersion
             freeCompilerArgs = ["-Xjsr305=strict", "-Xallow-kotlin-package"]
             suppressWarnings = true
         }
@@ -45,9 +48,9 @@ subprojects {
     }
 
     dependencies {
-        compile("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-        compile("org.jetbrains.kotlin:kotlin-reflect")
-        compile("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.3.2")
+        implementation("org.jetbrains.kotlin:kotlin-stdlib")
+        api("org.jetbrains.kotlin:kotlin-reflect")
+        api("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
         //compile('com.fasterxml.jackson.module:jackson-module-kotlin:2.9.7')
         testCompile("org.jetbrains.kotlin:kotlin-test-junit")
         testCompile("junit:junit:4.12")
