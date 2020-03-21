@@ -111,12 +111,12 @@ open class SqlDialect() : DbQuoteable {
         }
     }
 
-    open fun sqlDelete(table: String, query: DbQuery<*>, limit: Long? = null): String {
+    open fun sqlDelete(table: String, query: DbQuery<*>, params: ArrayList<Any?>, limit: Long? = null): String {
         return buildString {
             append("DELETE FROM ")
             append(quoteTableName(table))
             append(" WHERE ")
-            append(query.toString(dialect))
+            append(query.toString(dialect, params))
             if (limit != null) append(" LIMIT $limit")
             append(";")
         }

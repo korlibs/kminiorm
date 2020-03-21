@@ -40,14 +40,20 @@ fun DbQueryUnOp.toSqlString() = when (this) {
     DbQueryUnOp.NOT -> "NOT"
 }
 
-fun <T> DbQuery<T>.toString(db: DbQuoteable): String = when (this) {
-    is DbQuery.BinOp<*, *> -> "${db.quoteTableName(prop.name)}${op.toSqlString()}${db.quoteLiteral(literal)}"
+fun <T> DbQuery<T>.toString(db: DbQuoteable, outParams: ArrayList<Any?>): String = when (this) {
+    is DbQuery.BinOp<*, *> -> {
+        //outParams += literal
+        //"${db.quoteTableName(prop.name)} ${op.toSqlString()} ?"
+        "${db.quoteTableName(prop.name)} ${op.toSqlString()} ${db.quoteLiteral(literal)}"
+    }
     is DbQuery.Always<*> -> "1=1"
     is DbQuery.Never<*> -> "1=0"
-    is DbQuery.BinOpNode<*> -> "((${left.toString(db)}) ${op.toSqlString()} (${right.toString(db)}))"
-    is DbQuery.UnOpNode<*> -> "(${op.toSqlString()} (${right.toString(db)}))"
+    is DbQuery.BinOpNode<*> -> "((${left.toString(db, outParams)}) ${op.toSqlString()} (${right.toString(db, outParams)}))"
+    is DbQuery.UnOpNode<*> -> "(${op.toSqlString()} (${right.toString(db, outParams)}))"
     is DbQuery.IN<*, *> -> {
         if (literal.isNotEmpty()) {
+            //for (item in literal) outParams.add(item)
+            //"${db.quoteTableName(prop.name)} IN (${literal.joinToString(", ") { "?" }})"
             "${db.quoteTableName(prop.name)} IN (${literal.joinToString(", ") { db.quoteLiteral(it) }})"
         } else {
             "1=0"

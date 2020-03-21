@@ -319,7 +319,8 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
 
     override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Flow<Partial<T>> {
         val rquery = queryBuilder.buildOrNull(query) ?: return listOf<Partial<T>>().asFlow()
-        val data = query(buildString {
+        val params = arrayListOf<Any?>()
+        val queryStr = buildString {
             append("SELECT ")
             if (fields != null) {
                 append(fields.mapNotNull { table.getColumnByProp(it) }.joinToString(", ") { it.quotedName })
@@ -329,7 +330,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             append(" FROM ")
             append(_quotedTableName)
             append(" WHERE ")
-            append(rquery.toString(db))
+            append(rquery.toString(db, params))
             if (sorted != null && sorted.isNotEmpty()) {
                 val orders = sorted.map { table.getColumnByProp(it.first)!!.quotedName + when { it.second > 0 -> " ASC"; it.second < 0 -> " DESC"; else -> "" } }
                 append(" ORDER BY ${orders.joinToString(", ")}")
@@ -339,24 +340,26 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
                 if (skip != null) append(" OFFSET $skip")
             }
             append(";")
-        }).map { Partial(it.mapValues { (key, value) ->
-            table.deserializeColumn(value, table.getColumnByName(key), key)
-        }, table.clazz) }
+        }
         // @TODO: Can we optimize this by streaming results?
-        return data.asFlow()
+        return query(queryStr, *params.toTypedArray())
+                .map { Partial(it.mapValues { (key, value) -> table.deserializeColumn(value, table.getColumnByName(key), key) }, table.clazz) }
+                .asFlow()
     }
 
     override suspend fun count(query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
         val rquery = queryBuilder.buildOrNull(query) ?: return 0L
-        val data = query(buildString {
+        val params = arrayListOf<Any?>()
+        val queryStr = buildString {
             append("SELECT ")
             append("COUNT(*)")
             append(" FROM ")
             append(_quotedTableName)
             append(" WHERE ")
-            append(rquery.toString(db))
+            append(rquery.toString(db, params))
             append(";")
-        })
+        }
+        val data = query(queryStr, *params.toTypedArray())
         // @TODO: Can we optimize this by streaming results?
         return data.first().values.first().toString().toLong()
     }
@@ -367,7 +370,8 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
         val countAlias = "__c1"
         val groupedByCol = table.getColumnByProp(groupedBy) ?: error("Can't find column '$groupedBy'")
         val groupColumnQuotedName = groupedByCol.quotedName
-        val data = query(buildString {
+        val params = arrayListOf<Any?>()
+        val queryStr = buildString {
             append("SELECT ")
             append(groupColumnQuotedName)
             append(" AS $keyAlias, ")
@@ -375,11 +379,12 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             append(" FROM ")
             append(_quotedTableName)
             append(" WHERE ")
-            append(rquery.toString(db))
+            append(rquery.toString(db, params))
             append(" GROUP BY ")
             append(groupColumnQuotedName)
             append(";")
-        })
+        }
+        val data = query(queryStr, *params.toTypedArray())
         // @TODO: Can we optimize this by streaming results?
         return data
             .associate { (table.deserializeColumn(it[keyAlias], groupedByCol, keyAlias) as R) to it[countAlias].toString().toLong() }
@@ -395,20 +400,24 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
 
         val values = (setEntries + incrEntries).map { table.serializeColumn(it.value, it.key) }
 
-        return query(buildString {
+        val params = arrayListOf<Any?>()
+        val queryStr = buildString {
             append("UPDATE ")
             append(table.quotedTableName)
             append(" SET ")
             append((setEntries.map { "${it.key.quotedName}=?" } + incrEntries.map { "${it.key.quotedName}=${it.key.quotedName}+?" }).joinToString(", "))
             append(" WHERE ")
-            append(queryBuilder.build(query).toString(db))
+            append(queryBuilder.build(query).toString(db, params))
             if (limit != null) append(" LIMIT $limit")
             append(";")
-        }, *values.toTypedArray()).updateCount
+        }
+        return query(queryStr, *values.toTypedArray(), *params.toTypedArray()).updateCount
     }
 
     override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        return query(dialect.sqlDelete(table.tableName, queryBuilder.build(query), limit)).updateCount
+        val params = arrayListOf<Any?>()
+        val queryStr = dialect.sqlDelete(table.tableName, queryBuilder.build(query), params, limit)
+        return query(queryStr, *params.toTypedArray()).updateCount
     }
 }
 
