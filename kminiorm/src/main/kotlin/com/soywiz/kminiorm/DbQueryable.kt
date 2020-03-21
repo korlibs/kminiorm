@@ -251,9 +251,7 @@ open class SqlDialect() : DbQuoteable {
     }
 
     open fun sqlInsertReplace(tableInfo: OrmTableInfo<*>, keys: List<IColumnDef>): SqlInsertInfo {
-        return SqlInsertInfo(buildString {
-            TODO()
-        }, 0)
+        return SqlInsertInfo("", 0)
     }
 
     open val supportExtendedInsert = false
@@ -283,10 +281,10 @@ open class SqliteDialect : SqlDialect() {
 
     override val supportExtendedInsert = true
 
+    /*
     override fun sqlInsertReplace(tableInfo: OrmTableInfo<*>, keys: List<IColumnDef>): SqlInsertInfo {
         var repeatCount = 0
         return SqlInsertInfo(buildString {
-            //append(" ON CONFLICT(a) DO UPDATE SET ")
             for (uniqueColumns in tableInfo.columnUniqueIndices.values) {
                 val columns = uniqueColumns.joinToString(", ") { quoteColumnName(it.name) }
                 append(" ON CONFLICT($columns) DO UPDATE SET ")
@@ -295,9 +293,11 @@ open class SqliteDialect : SqlDialect() {
             }
         }, repeatCount)
     }
+     */
 
     override fun sqlInsertInto(onConflict: DbOnConflict): String = when (onConflict) {
         DbOnConflict.IGNORE -> "INSERT OR IGNORE INTO "
+        DbOnConflict.REPLACE -> "INSERT OR REPLACE INTO "
         else -> super.sqlInsertInto(onConflict)
     }
     override suspend fun showColumns(db: DbQueryable, table: String): List<IColumnDef> {
