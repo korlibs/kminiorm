@@ -1,9 +1,6 @@
 #!/usr/bin/env kotlin
-@file:Repository(url = "https://dl.bintray.com/soywiz/soywiz/")
 @file:Repository(url = "https://jcenter.bintray.com/")
-@file:DependsOn("com.soywiz.kminiorm:kminiorm:0.7.0")
-@file:DependsOn("com.soywiz.kminiorm:kminiorm-jdbc:0.7.0")
-@file:DependsOn("org.jetbrains.kotlin:kotlin-reflect:1.3.70")
+@file:DependsOn("com.soywiz.kminiorm:kminiorm-jdbc:0.7.2")
 @file:DependsOn("org.xerial:sqlite-jdbc:3.30.1")
 @file:CompilerOptions("-jvm-target", "1.8")
 
