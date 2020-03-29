@@ -1,6 +1,8 @@
 package com.soywiz.kminiorm
 
 import com.soywiz.kminiorm.dialect.SqliteDialect
+import com.soywiz.kminiorm.where.*
+import kotlinx.coroutines.flow.*
 import kotlin.test.*
 
 class JdbcSqliteKMiniOrmTest : KMiniOrmBaseTests(JdbcDb("jdbc:sqlite::memory:", "", "", async = false, debugSQL = true, dialect = SqliteDialect)) {
@@ -23,4 +25,12 @@ class JdbcSqliteKMiniOrmTest : KMiniOrmBaseTests(JdbcDb("jdbc:sqlite::memory:", 
     @Test
     @Ignore // @TODO: Ignored
     override fun testBoolean() = super.testBoolean()
+
+    @Test
+    fun testSimpleFlow1() = suspendTest {
+        val tableV1 = db.table<TableV1>()
+        tableV1.deleteAll()
+        tableV1.where.findFlow().collect {
+        }
+    }
 }

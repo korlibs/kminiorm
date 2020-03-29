@@ -50,7 +50,7 @@ data class DbTableWhere<T : DbTableBaseElement>(
                 skip = skip, limit = limit,
                 fields = fields, sorted = sorted,
                 chunkSize = chunkSize,
-                query = { AND(andClauses) }
+                query = { if (andClauses.isEmpty()) everything else AND(andClauses) }
             ).buffer(chunkSize)
         }
         flowCache!!
