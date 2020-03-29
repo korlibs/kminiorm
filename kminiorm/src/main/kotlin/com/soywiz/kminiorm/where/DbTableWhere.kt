@@ -45,7 +45,10 @@ data class DbTableWhere<T : DbTableBaseElement>(
 
     suspend fun count(): Long = table.count(FINAL_QUERY)
 
-    val FINAL_QUERY: DbQueryBuilder<T>.() -> DbQuery<T> by lazy { { if (andClauses.isEmpty()) everything else AND(andClauses) } }
+    val FINAL_QUERY by lazy {
+        val v: DbQueryBuilder<T>.() -> DbQuery<T> = { if (andClauses.isEmpty()) everything else AND(andClauses) }
+        v
+    }
 
     suspend fun findFlow(): Flow<T> = flowLock.withLock {
         if (flowCache == null) {
