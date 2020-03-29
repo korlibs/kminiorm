@@ -43,6 +43,10 @@ data class DbTableWhere<T : DbTableBaseElement>(
     private var flowCache: Flow<T>? = null
     private val flowLock = Mutex()
 
+    suspend fun count(): Long = table.count(FINAL_QUERY)
+
+    val FINAL_QUERY: DbQueryBuilder<T>.() -> DbQuery<T> by lazy { { if (andClauses.isEmpty()) everything else AND(andClauses) } }
+
     suspend fun findFlow(): Flow<T> = flowLock.withLock {
         if (flowCache == null) {
             val chunkSize = chunkSize ?: 16
@@ -50,7 +54,7 @@ data class DbTableWhere<T : DbTableBaseElement>(
                 skip = skip, limit = limit,
                 fields = fields, sorted = sorted,
                 chunkSize = chunkSize,
-                query = { if (andClauses.isEmpty()) everything else AND(andClauses) }
+                query = FINAL_QUERY
             ).buffer(chunkSize)
         }
         flowCache!!
