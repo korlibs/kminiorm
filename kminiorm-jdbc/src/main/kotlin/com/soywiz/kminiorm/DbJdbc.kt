@@ -21,6 +21,7 @@ import kotlin.reflect.full.*
 
 private val _DEBUG_JDBC = System.getenv("DEBUG_JDBC") == "true"
 private val _DEBUG_JDBC_RESULTS = System.getenv("DEBUG_JDBC_RESULTS") == "true"
+private val PRE_DEBUG_SQL = System.getenv("PRE_DEBUG_SQL") == "true"
 
 class WrappedConnection(val connectionIndex: Int, val connectionStr: String, val user: String?, val pass: String?, val timeout: Duration) {
     private var lastUsedTimestamp = 0L
@@ -182,6 +183,8 @@ class JdbcTransaction(override val db: JdbcDb, val wrappedConnection: WrappedCon
     override suspend fun multiQuery(sql: String, paramsList: List<Array<out Any?>>): DbResult {
         val startTime = System.currentTimeMillis()
         var results: DbResult? = null
+        if (PRE_DEBUG_SQL) println("QUERY[${wrappedConnection.connectionIndex}] : $sql, ${paramsList.map { it.toList() }}")
+
         try {
             results = if (db.async) withContext(db.dispatcher) { _query(sql, paramsList) } else _query(sql, paramsList)
             return results

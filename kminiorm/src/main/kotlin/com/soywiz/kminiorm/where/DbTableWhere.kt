@@ -44,6 +44,7 @@ data class DbTableWhere<T : DbTableBaseElement>(
     private val flowLock = Mutex()
 
     suspend fun count(): Long = table.count(FINAL_QUERY)
+    suspend fun countRows(): Long = table.count(FINAL_QUERY)
 
     val FINAL_QUERY by lazy {
         val v: DbQueryBuilder<T>.() -> DbQuery<T> = { if (andClauses.isEmpty()) everything else AND(andClauses) }
