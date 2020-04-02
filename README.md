@@ -33,7 +33,7 @@ table.insert(
         onConflict = DbOnConflict.IGNORE
 )
 
-table.where.ge(MyTable::value, 20L).limit(10).collect {
+table.where { it::value ge 20L }.limit(10).collect {
     println(it)
 }
 ```
