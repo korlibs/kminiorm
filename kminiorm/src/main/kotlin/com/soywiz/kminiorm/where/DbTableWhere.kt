@@ -1,6 +1,7 @@
 package com.soywiz.kminiorm.where
 
 import com.soywiz.kminiorm.*
+import com.soywiz.kminiorm.util.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.*
@@ -51,9 +52,12 @@ data class DbTableWhere<T : DbTableBaseElement>(
         v
     }
 
+    @PublishedApi
+    internal val finalChunkSize get() = chunkSize ?: 16
+
     suspend fun findFlow(): Flow<T> = flowLock.withLock {
         if (flowCache == null) {
-            val chunkSize = chunkSize ?: 16
+            val chunkSize = finalChunkSize
             flowCache = table.findChunked(
                 skip = skip, limit = limit,
                 fields = fields, sorted = sorted,
@@ -63,6 +67,8 @@ data class DbTableWhere<T : DbTableBaseElement>(
         }
         flowCache!!
     }
+
+    suspend fun findFlowChunked(): Flow<List<T>> = findFlow().chunked(finalChunkSize)
 
     private var listCache: List<T>? = null
     private val listLock = Mutex()

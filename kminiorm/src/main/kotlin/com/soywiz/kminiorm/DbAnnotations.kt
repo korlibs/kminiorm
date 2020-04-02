@@ -15,6 +15,9 @@ annotation class DbUnique(val name: String = "", val direction: DbIndexDirection
 annotation class DbPrimary(val direction: DbIndexDirection = DbIndexDirection.ASC)
 
 @Target(AnnotationTarget.PROPERTY)
+annotation class DbAutoIncrement()
+
+@Target(AnnotationTarget.PROPERTY)
 annotation class DbIndex(val name: String = "", val direction: DbIndexDirection = DbIndexDirection.ASC, val order: Int = 0)
 
 @Target(AnnotationTarget.PROPERTY)

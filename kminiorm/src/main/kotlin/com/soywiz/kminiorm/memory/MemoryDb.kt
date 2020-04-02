@@ -15,12 +15,12 @@ class MemoryDb(
 ) : AbstractDb(dialect), DbBase, DbQuoteable by dialect {
     override fun <T : DbTableBaseElement> constructTable(clazz: KClass<T>): DbTable<T> = MemoryDbTable(this, clazz, typer)
 
-    override suspend fun <T> transaction(callback: suspend DbBaseTransaction.() -> T): T = callback(MemoryTransaction(this))
+    override suspend fun <T> transaction(name: String, callback: suspend DbBaseTransaction.() -> T): T = callback(MemoryTransaction(name, this))
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult = TODO()
 }
 
-class MemoryTransaction(override val db: DbBase) : DbBaseTransaction {
+class MemoryTransaction(val name: String, override val db: DbBase) : DbBaseTransaction {
     override suspend fun DbBase.commit(): Unit = Unit
     override suspend fun DbBase.rollback(): Unit = Unit
     override suspend fun query(sql: String, vararg params: Any?): DbResult = db.query(sql, *params)

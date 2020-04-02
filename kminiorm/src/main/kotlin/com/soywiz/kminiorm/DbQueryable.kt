@@ -67,7 +67,7 @@ interface DbBase : Db, DbQueryable, DbQuoteable {
     val debugSQL: Boolean get() = false
     val dispatcher: CoroutineContext
     val async: Boolean get() = true
-    suspend fun <T> transaction(callback: suspend DbBaseTransaction.() -> T): T
+    suspend fun <T> transaction(name: String, callback: suspend DbBaseTransaction.() -> T): T
 }
 
 interface DbBaseTransaction : DbQueryable {

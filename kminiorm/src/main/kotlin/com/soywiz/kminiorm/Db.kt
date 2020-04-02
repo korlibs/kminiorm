@@ -116,10 +116,13 @@ class ColumnDef<T : Any>(val ormTableInfo: OrmTableInfo<T>, val dialect: SqlDial
     override val annotatedElement: KAnnotatedElement? = property
     val isNullable get() = property.returnType.isMarkedNullable
     val isPrimary = property.findAnnotation<DbPrimary>() != null
+    val isAutoIncrement = property.findAnnotation<DbAutoIncrement>() != null
     val isUnique = property.findAnnotation<DbUnique>() != null
     val isPrimaryOrUnique = isPrimary || isUnique
     val isNormalIndex = property.findAnnotation<DbIndex>() != null
     //val ignored: Boolean = property.findAnnotation<DbIgnore>() != null
+
+    val skipOnInsert get() = isAutoIncrement
 
     //val isAnyIndex get() = isUnique || isNormalIndex
     val isAnyIndex get() = isUnique || isNormalIndex || isPrimary

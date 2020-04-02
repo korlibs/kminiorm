@@ -60,15 +60,25 @@ open class SqlDialect() : DbQuoteable {
             append(quoteColumnName(colName))
             append(" ")
             append(toSqlType(type, annotations))
-            if (type.isMarkedNullable) {
-                append(" NULL")
-            } else {
-                append(" NOT NULL")
-                append(" DEFAULT (")
-                append(quoteLiteral(if (defaultValue != Unit) defaultValue else typer.createDefault(type)))
-                append(")")
+            when {
+                annotations?.findAnnotation<DbAutoIncrement>() != null -> {
+                    append(autoincrement())
+                }
+                type.isMarkedNullable -> {
+                    append(" NULL")
+                }
+                else -> {
+                    append(" NOT NULL")
+                    append(" DEFAULT (")
+                    append(quoteLiteral(if (defaultValue != Unit) defaultValue else typer.createDefault(type)))
+                    append(")")
+                }
             }
         }
+    }
+
+    open fun autoincrement(): String {
+        return " PRIMARY KEY AUTOINCREMENT"
     }
 
     open fun sqlCreateColumnDef(typer: Typer, column: IColumnDef): String {

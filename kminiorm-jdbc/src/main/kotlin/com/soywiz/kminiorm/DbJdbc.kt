@@ -70,8 +70,8 @@ class JdbcDb(
         if (async) withContext(dispatcher) { getConnection() } else getConnection()
     }
 
-    override suspend fun <R> transaction(callback: suspend DbBaseTransaction.() -> R): R {
-        if (reallyDebugSQL) println("TRANSACTION START")
+    override suspend fun <R> transaction(name: String, callback: suspend DbBaseTransaction.() -> R): R {
+        if (reallyDebugSQL) println("TRANSACTION START ($name)")
         val startTime = System.currentTimeMillis()
         return connectionPool.take {
             try {
@@ -105,8 +105,8 @@ class JdbcDb(
         }
     }
 
-    override suspend fun query(@Language("SQL") sql: String, vararg params: Any?) = transaction { query(sql, *params) }
-    override suspend fun multiQuery(@Language("SQL") sql: String, paramsList: List<Array<out Any?>>): DbResult = transaction { multiQuery(sql, paramsList) }
+    override suspend fun query(@Language("SQL") sql: String, vararg params: Any?) = transaction("QUERY $sql") { query(sql, *params) }
+    override suspend fun multiQuery(@Language("SQL") sql: String, paramsList: List<Array<out Any?>>): DbResult = transaction("MQUERY $sql") { multiQuery(sql, paramsList) }
 }
 
 
@@ -216,13 +216,13 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
                 if (column.name in oldColumns) continue // Do not add columns if they already exists
 
                 val result = kotlin.runCatching {
-                    transaction {
+                    //transaction { // @TODO: This seems to fail on sqlite atleast
                         query(dialect.sqlAlterTableAddColumn(typer, table.tableName, column))
                         for (migrationAnnotation in column.migrations) {
                             val instance = migrationAnnotation.migration.createInstance() as DbMigration<T>
                             instance.migrate(table, DbMigration.Action.ADD_COLUMN, column)
                         }
-                    }
+                    //}
                 }
                 if (result.isFailure) {
                     if (db.ignoreInitErrors) {
@@ -279,7 +279,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
         try {
             val columns = data.first().keys
             val dataList = columns.map { column -> column to data.map { it[column] } }.toMap()
-            val entries = table.toColumnMap(dataList).entries
+            val entries = table.toColumnMap(dataList, skipOnInsert = true).entries
 
             val keys: MutableList<IColumnDef> = entries.map { it.key }.toMutableList()
             if (table.hasExtrinsicData) keys += EXTRINSIC_COLUMN
@@ -395,8 +395,8 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
 
     override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
         val table = this.table
-        val setEntries = (set?.let { table.toColumnMap(it.data).entries } ?: setOf()).toList()
-        val incrEntries = (increment?.let { table.toColumnMap(it.data).entries } ?: setOf()).toList()
+        val setEntries = (set?.let { table.toColumnMap(it.data, skipOnInsert = true).entries } ?: setOf()).toList()
+        val incrEntries = (increment?.let { table.toColumnMap(it.data, skipOnInsert = true).entries } ?: setOf()).toList()
 
         // Can't make an UPDATE query that does nothing
         if (setEntries.isEmpty() && incrEntries.isEmpty()) return 0L
@@ -445,16 +445,18 @@ class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val 
     override suspend fun query(sql: String, vararg params: Any?): DbResult = db.query(sql, *params)
     override suspend fun multiQuery(sql: String, paramsList: List<Array<out Any?>>): DbResult = db.multiQuery(sql, paramsList)
 
-    override suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R = db.transaction {
-        callback(DbTableTransaction(this@DbJdbcTable, this))
+    override suspend fun <R> transaction(name: String, callback: suspend DbTable<T>.() -> R): R = db.transaction(name) {
+        callback(DbTableTransaction(name, this@DbJdbcTable, this))
     }
 
-    fun <R> toColumnMap(map: Map<String, R>): Map<ColumnDef<T>, R> {
+    fun <R> toColumnMap(map: Map<String, R>, skipOnInsert: Boolean): Map<ColumnDef<T>, R> {
         @Suppress("UNCHECKED_CAST")
         return map.entries
             .map { getColumnByName(it.key) to it.value }
             .filter { it.first != null }
-            .toMap() as Map<ColumnDef<T>, R>
+            .toMap()
+            .filterKeys { !skipOnInsert || it?.skipOnInsert != true }
+            as Map<ColumnDef<T>, R>
     }
 
     fun serializeColumn(value: Any?, column: ColumnDef<T>?, columnName: String = column?.name ?: "unknown"): Any? {
@@ -513,15 +515,16 @@ class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val 
 }
 
 class DbTableTransaction<T: DbTableBaseElement>(
-        override val table: DbJdbcTable<T>,
-        val transaction: DbBaseTransaction
+    val name: String,
+    override val table: DbJdbcTable<T>,
+    val transaction: DbBaseTransaction
 ) : SqlTable<T>() {
     override val ormTableInfo: OrmTableInfo<T> get() = table.ormTableInfo
     override val clazz: KClass<T> get() = table.clazz
     override val db get() = table.db
 
-    override suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R = db.transaction {
-        callback(DbTableTransaction(this@DbTableTransaction.table, this))
+    override suspend fun <R> transaction(name: String, callback: suspend DbTable<T>.() -> R): R = db.transaction(name) {
+        callback(DbTableTransaction(name, this@DbTableTransaction.table, this))
     }
 
     override suspend fun query(sql: String, vararg params: Any?): DbResult = transaction.query(sql, *params)

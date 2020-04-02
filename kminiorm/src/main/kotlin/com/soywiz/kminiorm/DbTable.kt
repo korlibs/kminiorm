@@ -110,7 +110,7 @@ interface DbTable<T : DbTableBaseElement> {
 
     suspend fun insertIgnore(value: T): Unit = insert(value, onConflict = DbOnConflict.IGNORE)
     suspend fun insert(instances: List<T>, onConflict: DbOnConflict = DbOnConflict.ERROR) {
-        transaction {
+        transaction("INSERT") {
             when (onConflict) {
                 DbOnConflict.ERROR -> for (instance in instances) insert(instance)
                 DbOnConflict.IGNORE -> for (instance in instances) runCatching { insert(instance) }
@@ -202,7 +202,8 @@ interface DbTable<T : DbTableBaseElement> {
     suspend fun delete(limit: Long? = null, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long
     suspend fun deleteAll(limit: Long? = null) = delete() { everything }
 
-    suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R = callback()
+    suspend fun <R> transaction(name: String, callback: suspend DbTable<T>.() -> R): R = callback()
+    suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R = transaction("UNKNOWN", callback)
 }
 
 suspend fun <T : DbTableElement> DbTable<T>.findById(id: DbKey): T? = findOne { DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ) }

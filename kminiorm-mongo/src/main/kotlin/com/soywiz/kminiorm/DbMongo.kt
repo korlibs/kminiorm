@@ -165,8 +165,8 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
         return result.deletedCount
     }
 
-    override suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R {
-        println("TODO: MongoDB transactions not implemented yet")
+    override suspend fun <R> transaction(name: String, callback: suspend DbTable<T>.() -> R): R {
+        println("TODO: MongoDB transactions not implemented yet ($name)")
         return callback()
     }
 }
