@@ -5,6 +5,8 @@ import com.soywiz.kminiorm.util.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.*
+import kotlin.internal.*
+import kotlin.internal.Exact
 import kotlin.reflect.*
 
 data class DbTableWhere<T : DbTableBaseElement>(
@@ -17,8 +19,13 @@ data class DbTableWhere<T : DbTableBaseElement>(
     private val chunkSize: Int? = null,
     private val andClauses: List<DbQuery<T>> = emptyList()
 ) : Flow<T> {
-    fun fields(vararg fields: KProperty1<T, *>) = this.copy(fields = fields.toList())
-    fun fields(fields: List<KProperty1<T, *>>) = this.copy(fields = fields.toList())
+    fun setFields(vararg fields: KProperty1<T, *>) = this.copy(fields = fields.toList())
+
+    fun fields(vararg fields: KProperty1<T, *>) = this.copy(fields = (this.fields ?: emptyList()) + fields.toList())
+    fun fields(fields: List<KProperty1<T, *>>) = this.copy(fields = (this.fields ?: emptyList()) + fields.toList())
+
+    fun field(fields: (T) -> KProperty0<*>) = this.copy(fields = (this.fields ?: emptyList()) + table.getProperty(fields(table.dummyInstance)))
+    fun fields(fields: (T) -> Iterable<KProperty0<*>>) = this.copy(fields = (this.fields ?: emptyList()) + fields(table.dummyInstance).map { table.getProperty(it) })
 
     fun sorted(vararg sorted: Pair<KProperty1<T, *>, Int>) = this.copy(sorted = sorted.toList())
     fun sorted(sorted: List<Pair<KProperty1<T, *>, Int>>) = this.copy(sorted = sorted.toList())
@@ -31,14 +38,23 @@ data class DbTableWhere<T : DbTableBaseElement>(
     @PublishedApi
     internal val _andClauses get() = andClauses
 
-    inline fun where(query: DbQueryBuilder<T>.() -> DbQuery<T>) = this.copy(andClauses = _andClauses + query(table.queryBuilder))
+    inline fun where(query: DbQueryBuilder<T>.(T) -> DbQuery<T>) = this.copy(andClauses = _andClauses + query(table.queryBuilder, table.dummyInstance))
+
+    @Deprecated("Use where instead")
     inline fun <R> eq(field: KProperty1<T, R>, value: R) = where { field eq value }
+    @Deprecated("Use where instead")
     inline fun <R> ne(field: KProperty1<T, R>, value: R) = where { field ne value }
+    @Deprecated("Use where instead")
     inline fun <R : Comparable<R>?> gt(field: KProperty1<T, R>, value: R) = where { field gt value }
+    @Deprecated("Use where instead")
     inline fun <R : Comparable<R>?> ge(field: KProperty1<T, R>, value: R) = where { field ge value }
+    @Deprecated("Use where instead")
     inline fun <R : Comparable<R>?> lt(field: KProperty1<T, R>, value: R) = where { field lt value }
+    @Deprecated("Use where instead")
     inline fun <R : Comparable<R>?> le(field: KProperty1<T, R>, value: R) = where { field le value }
+    @Deprecated("Use where instead")
     inline fun <R : Comparable<R>> between(field: KProperty1<T, R>, value: ClosedRange<R>) = where { field BETWEEN value }
+    @Deprecated("Use where instead")
     inline fun <R : Comparable<R>> IN(field: KProperty1<T, R>, values: List<R>) = where { field IN values }
 
     private var flowCache: Flow<T>? = null
@@ -48,7 +64,7 @@ data class DbTableWhere<T : DbTableBaseElement>(
     suspend fun countRows(): Long = table.count(FINAL_QUERY)
 
     val FINAL_QUERY by lazy {
-        val v: DbQueryBuilder<T>.() -> DbQuery<T> = { if (andClauses.isEmpty()) everything else AND(andClauses) }
+        val v: DbQueryBuilder<T>.(T) -> DbQuery<T> = { if (andClauses.isEmpty()) everything else AND(andClauses) }
         v
     }
 
@@ -66,6 +82,12 @@ data class DbTableWhere<T : DbTableBaseElement>(
             ).buffer(chunkSize)
         }
         flowCache!!
+    }
+
+    suspend fun findOne(): T? = find().firstOrNull()
+
+    suspend fun delete() {
+        table.delete(limit = limit, query = FINAL_QUERY)
     }
 
     suspend fun findFlowChunked(): Flow<List<T>> = findFlow().chunked(finalChunkSize)
@@ -87,6 +109,7 @@ data class DbTableWhere<T : DbTableBaseElement>(
 }
 
 val <T : DbTableBaseElement> DbTable<T>.where get() = DbTableWhere(this)
+fun <T : DbTableBaseElement> DbTable<T>.where(query: DbQueryBuilder<T>.(T) -> DbQuery<T>) = where.where(query)
 
 // @TODO: Can we do this without converting to list?
 //@Deprecated("")

@@ -293,21 +293,27 @@ open class Typer private constructor(
     } as ClassTyper<T>
 }
 
-interface ClassTyper<T: Any> {
-    fun type(value: Any?): T
-    fun typeOrNull(value: Any?): T? = if (value == null) null else type(value)
+abstract class ClassTyper<T: Any>(val clazz: KClass<T>) {
+    val propertiesByName = clazz.memberProperties.associateBy { it.name }
+
+    abstract fun type(value: Any?): T
+    open fun typeOrNull(value: Any?): T? = if (value == null) null else type(value)
+    fun <R> getProperty(first: KProperty<R>): KProperty1<T, R> {
+        @Suppress("UNCHECKED_CAST")
+        return (propertiesByName[first.name] as? KProperty1<T, R>?) ?: error("Can't find property $first")
+    }
 }
 
-class JitClassTyper<T: Any>(val factory: GenerateFactory, val clazz: KClass<T>) : ClassTyper<T> {
+class JitClassTyper<T: Any>(val factory: GenerateFactory, clazz: KClass<T>) : ClassTyper<T>(clazz) {
     private val gen = factory.get(clazz)
     override fun type(value: Any?): T = gen.convert(value)
 }
 
-class ReflectClassTyper<T: Any>(val typer: Typer, val clazz: KClass<T>) : ClassTyper<T> {
+class ReflectClassTyper<T: Any>(val typer: Typer, clazz: KClass<T>) : ClassTyper<T>(clazz) {
     override fun type(value: Any?): T = typer.type<T>(value ?: Unit, clazz) as T
 }
 
-class ReflectTyperClassTyper<T: Any>(val typer: Typer, val clazz: KClass<T>, private val ctyper: ((Typer, Any, KType) -> Any)) : ClassTyper<T> {
+class ReflectTyperClassTyper<T: Any>(val typer: Typer, clazz: KClass<T>, private val ctyper: ((Typer, Any, KType) -> Any)) : ClassTyper<T>(clazz) {
     private val ktype = clazz.starProjectedType
     override fun type(value: Any?): T = ctyper(typer, value ?: Unit, ktype) as T
 }

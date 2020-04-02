@@ -76,9 +76,9 @@ class MemoryDbTable<T : DbTableBaseElement>(
         limit: Long?,
         fields: List<KProperty1<T, *>>?,
         sorted: List<Pair<KProperty1<T, *>, Int>>?,
-        query: DbQueryBuilder<T>.() -> DbQuery<T>
+        query: DbQueryBuilder<T>.(T) -> DbQuery<T>
     ): Flow<Partial<T>> = flow {
-        val realQuery = query(queryBuilder)
+        val realQuery = queryBuilder.build(query)
         var skipCount = skip ?: 0L
         val maxLimit = limit ?: Long.MAX_VALUE
         var emitCount = 0L
@@ -118,8 +118,8 @@ class MemoryDbTable<T : DbTableBaseElement>(
     }
 
     @Synchronized
-    override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        val realQuery = query(queryBuilder)
+    override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Long {
+        val realQuery = queryBuilder.build(query)
         var updatedCount = 0L
         for (instanceIndex in instances.indices) {
             if (!realQuery.matches(instances[instanceIndex])) continue
@@ -147,8 +147,9 @@ class MemoryDbTable<T : DbTableBaseElement>(
     }
 
     @Synchronized
-    override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
-        val realQuery = query(queryBuilder)
+    override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Long {
+
+        val realQuery = queryBuilder.build(query)
 
         var count = 0L
         instances

@@ -320,7 +320,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
         }
     }
 
-    override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Flow<Partial<T>> {
+    override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Flow<Partial<T>> {
         val rquery = queryBuilder.buildOrNull(query) ?: return listOf<Partial<T>>().asFlow()
         val params = arrayListOf<Any?>()
         val queryStr = buildString {
@@ -350,7 +350,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
                 .asFlow()
     }
 
-    override suspend fun count(query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+    override suspend fun count(query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Long {
         val rquery = queryBuilder.buildOrNull(query) ?: return 0L
         val params = arrayListOf<Any?>()
         val queryStr = buildString {
@@ -367,7 +367,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
         return data.first().values.first().toString().toLong()
     }
 
-    override suspend fun <R> countGrouped(groupedBy: KProperty1<T, R>, query: DbQueryBuilder<T>.() -> DbQuery<T>): Map<R, Long> {
+    override suspend fun <R> countGrouped(groupedBy: KProperty1<T, R>, query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Map<R, Long> {
         val rquery = queryBuilder.buildOrNull(query) ?: return mapOf()
         val keyAlias = "__k1"
         val countAlias = "__c1"
@@ -393,7 +393,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
             .associate { (table.deserializeColumn(it[keyAlias], groupedByCol, keyAlias) as R) to it[countAlias].toString().toLong() }
     }
 
-    override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+    override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Long {
         val table = this.table
         val setEntries = (set?.let { table.toColumnMap(it.data, skipOnInsert = true).entries } ?: setOf()).toList()
         val incrEntries = (increment?.let { table.toColumnMap(it.data, skipOnInsert = true).entries } ?: setOf()).toList()
@@ -417,7 +417,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
         return query(queryStr, *values.toTypedArray(), *params.toTypedArray()).updateCount
     }
 
-    override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+    override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Long {
         val params = arrayListOf<Any?>()
         val queryStr = dialect.sqlDelete(table.tableName, queryBuilder.build(query), params, limit)
         return query(queryStr, *params.toTypedArray()).updateCount

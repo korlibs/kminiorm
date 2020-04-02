@@ -94,7 +94,7 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
         }
     }
 
-    override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Flow<Partial<T>> {
+    override suspend fun findFlowPartial(skip: Long?, limit: Long?, fields: List<KProperty1<T, *>>?, sorted: List<Pair<KProperty1<T, *>, Int>>?, query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Flow<Partial<T>> {
         val rquery = queryBuilder.build(query).toMongoMap().toJsonObject(db)
         val wantsId = fields?.any { it.name == "_id" } ?: true
         if (DEBUG_MONGO) println("QUERY: $rquery")
@@ -137,7 +137,7 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
         //return flow { try {  while (true) emit(channel.receive())  } catch (e: ClosedReceiveChannelException) {  }  }
     }
 
-    override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+    override suspend fun update(set: Partial<T>?, increment: Partial<T>?, limit: Long?, query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Long {
         val setData = (set?.data?.mapToMongo(db.typer) ?: mapOf())
         val incData = (increment?.data?.mapToMongo(db.typer) ?: mapOf())
         val updateMap = Document(mutableMapOf<String, Any?>().also { map ->
@@ -159,7 +159,7 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
         return result.modifiedCount
     }
 
-    override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.() -> DbQuery<T>): Long {
+    override suspend fun delete(limit: Long?, query: DbQueryBuilder<T>.(T) -> DbQuery<T>): Long {
         val rquery = queryBuilder.build(query).toMongoMap().toJsonObject(db)
         val result = awaitMongo<DeleteResult> { dbCollection.deleteMany(rquery, it) }
         return result.deletedCount

@@ -38,9 +38,11 @@ open class DbQueryBuilder<T : DbBaseModel>(val table: DbTable<T>) {
     private val NEVER = DbQueryBuilder.NEVER as DbQuery.Never<T>
     val everything = DbQueryBuilder.ALWAYS as DbQuery.Always<T>
     val nothing = DbQueryBuilder.NEVER as DbQuery.Never<T>
+    @PublishedApi
+    internal val <R : Any?> KProperty0<@Exact R>.prop get() = table.getProperty(this)
 
-    fun build(query: DbQueryBuilder<T>.() -> DbQuery<T>): DbQuery<T> = query(this)
-    fun buildOrNull(query: DbQueryBuilder<T>.() -> DbQuery<T>) = build(query).takeIf { (it !is DbQuery.Never<*>) }
+    fun build(query: DbQueryBuilder<T>.(T) -> DbQuery<T>): DbQuery<T> = query(this, table.dummyInstance)
+    fun buildOrNull(query: DbQueryBuilder<T>.(T) -> DbQuery<T>) = build(query).takeIf { (it !is DbQuery.Never<*>) }
 
     fun id(id: DbKey) = DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ)
     fun raw(map: Map<String, Any?>) = DbQuery.Raw<T>(map)
@@ -49,7 +51,11 @@ open class DbQueryBuilder<T : DbBaseModel>(val table: DbTable<T>) {
     infix fun DbQuery<T>.AND(that: DbQuery<T>) = if (this is DbQuery.Never<*> || that is DbQuery.Never<*>) NEVER else DbQuery.BinOpNode(this, DbQueryBinOp.AND, that)
     infix fun DbQuery<T>.OR(that: DbQuery<T>) = DbQuery.BinOpNode(this, DbQueryBinOp.OR, that)
     fun NOT(q: DbQuery<T>) = DbQuery.UnOpNode(DbQueryUnOp.NOT, q)
-    infix fun <R : Any?> KProperty1<@Exact T, @Exact R>.IN(literals: List<R>) = if (literals.isNotEmpty()) DbQuery.IN(this, literals) else NEVER
+
+    infix fun <R : Any?> KProperty1<@Exact T, @Exact R>.IN(literals: Iterable<R>) = run {
+        val literalsList = literals.toList()
+        if (literalsList.isNotEmpty()) DbQuery.IN(this, literalsList) else NEVER
+    }
     infix fun <R : Any?> KProperty1<@Exact T, @Exact R>.LIKE(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.LIKE)
     infix fun <R : Any?> KProperty1<@Exact T, @Exact R>.eq(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.EQ)
     infix fun <T : Any?> KProperty1<@Exact T, DbKey>.eq(literal: DbModel) = DbQuery.BinOp(this, literal._id, DbQueryBinOp.EQ)
@@ -60,6 +66,18 @@ open class DbQueryBuilder<T : DbBaseModel>(val table: DbTable<T>) {
     infix fun <R : Comparable<R>?> KProperty1<@Exact T, @Exact R>.le(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.LE)
     infix fun <R : Comparable<R>?> KProperty1<@Exact T, @Exact R>.BETWEEN(literal: Pair<R, R>) = (this ge literal.first) AND (this lt literal.second)
     infix fun <R : Comparable<R>> KProperty1<@Exact T, @Exact R?>.BETWEEN(literal: ClosedRange<R>) = ((this as KProperty1<@Exact T, @Exact R>) ge (literal.start)) AND (this le literal.endInclusive)
+
+    infix fun <R : Any?> KProperty0<@Exact R>.IN(literals: Iterable<R>) = prop IN literals
+    infix fun <R : Any?> KProperty0<@Exact R>.LIKE(literal: R) = prop LIKE literal
+    infix fun <R : Any?> KProperty0<@Exact R>.eq(literal: R) = prop eq literal
+    infix fun <T : Any?> KProperty0<DbKey>.eq(literal: DbModel) = prop eq literal
+    infix fun <R : Any?> KProperty0<@Exact R>.ne(literal: R) = prop ne literal
+    infix fun <R : Comparable<R>?> KProperty0<@Exact R>.gt(literal: R) = prop gt literal
+    infix fun <R : Comparable<R>?> KProperty0<@Exact R>.lt(literal: R) = prop lt literal
+    infix fun <R : Comparable<R>?> KProperty0<@Exact R>.ge(literal: R) = prop ge literal
+    infix fun <R : Comparable<R>?> KProperty0<@Exact R>.le(literal: R) = prop le literal
+    infix fun <R : Comparable<R>?> KProperty0<@Exact R>.BETWEEN(literal: Pair<R, R>) = prop BETWEEN literal
+    infix fun <R : Comparable<R>> KProperty0<@Exact R?>.BETWEEN(literal: ClosedRange<R>) = prop BETWEEN literal
 
     fun auto(instance: T): DbQuery<T> {
         val uniqueColumns = table.ormTableInfo.columnUniqueIndices.values.flatten()
