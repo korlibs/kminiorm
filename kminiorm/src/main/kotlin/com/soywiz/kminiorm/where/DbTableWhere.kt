@@ -5,8 +5,6 @@ import com.soywiz.kminiorm.util.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.*
-import kotlin.internal.*
-import kotlin.internal.Exact
 import kotlin.reflect.*
 
 data class DbTableWhere<T : DbTableBaseElement>(
@@ -60,8 +58,10 @@ data class DbTableWhere<T : DbTableBaseElement>(
     private var flowCache: Flow<T>? = null
     private val flowLock = Mutex()
 
-    suspend fun count(): Long = table.count(FINAL_QUERY)
-    suspend fun countRows(): Long = table.count(FINAL_QUERY)
+    suspend fun countRows(): Long =
+        (table.count(query = FINAL_QUERY) - (skip ?: 0L)).coerceIn(0L, limit ?: Long.MAX_VALUE)
+
+    suspend fun count(): Long = countRows()
 
     val FINAL_QUERY by lazy {
         val v: DbQueryBuilder<T>.(T) -> DbQuery<T> = { if (andClauses.isEmpty()) everything else AND(andClauses) }

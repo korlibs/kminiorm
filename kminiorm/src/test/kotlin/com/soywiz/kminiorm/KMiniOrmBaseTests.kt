@@ -433,11 +433,11 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         table.insert(Simple(a = 10, b = 20, c = 31))
         table.insert(Simple(a = 10, b = 21, c = 31))
         table.insert(Simple(a = 10, b = 21, c = 33))
-        assertEquals(2, table.where.where { Simple::b eq 21 }.count())
-        assertEquals(1, table.where.eq(Simple::b, 21).eq(Simple::c, 31).count())
-        assertEquals(2, table.where.gt(Simple::b, 20).count())
-        assertEquals(1, table.where.gt(Simple::b, 20).limit(1).count())
-        assertEquals(listOf(33), table.where.gt(Simple::b, 20).skip(1).map { it.c }.toList())
+        assertEquals(2, table.where.where { Simple::b eq 21 }.count(), "[a]")
+        assertEquals(1, table.where.eq(Simple::b, 21).eq(Simple::c, 31).count(), "[b]")
+        assertEquals(2, table.where.gt(Simple::b, 20).count(), "[c]")
+        assertEquals(1, table.where.gt(Simple::b, 20).limit(1).count(), "[d]")
+        assertEquals(listOf(33), table.where.gt(Simple::b, 20).skip(1).map { it.c }.toList(), "[e]")
     }
 
     @Test
@@ -462,9 +462,9 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         table.insert(MultiInsertTest("a", 1), MultiInsertTest("b", 1), MultiInsertTest("c", 2))
         table.insert(MultiInsertTest("d", 2), MultiInsertTest("e", 3), MultiInsertTest("f", 3))
 
-        val baseQuery = table.where.eq(MultiInsertTest::value, 1)
-        assertEquals(2, baseQuery.count())
-        assertEquals(1, baseQuery.eq(MultiInsertTest::a, "b").count())
-        assertEquals(listOf("b", "a"), baseQuery.sorted(MultiInsertTest::a to -1).map { it.a }.toList())
+        val baseQuery = table.where { it::value eq 1 }
+        assertEquals(2, baseQuery.count(), "[a]")
+        assertEquals(1, baseQuery.where { it::a eq "b" }.count(), "[b]")
+        assertEquals(listOf("b", "a"), baseQuery.sorted(MultiInsertTest::a to -1).map { it.a }.toList(), "[c]")
     }
 }
