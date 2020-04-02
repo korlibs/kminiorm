@@ -47,6 +47,7 @@ data class DbTableWhere<T : DbTableBaseElement>(
     @PublishedApi
     internal val _andClauses get() = andClauses
 
+    inline fun setWhere(query: DbQueryBuilder<T>.(T) -> DbQuery<T>) = this.copy(andClauses = listOf(query(table.queryBuilder, table.dummyInstance)))
     inline fun where(query: DbQueryBuilder<T>.(T) -> DbQuery<T>) = this.copy(andClauses = _andClauses + query(table.queryBuilder, table.dummyInstance))
 
     @Deprecated("Use where instead")
