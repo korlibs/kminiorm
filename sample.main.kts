@@ -4,7 +4,7 @@
 //sdk install kotlin
 
 @file:Repository(url = "https://jcenter.bintray.com/")
-@file:DependsOn("com.soywiz.kminiorm:kminiorm-jdbc:0.8.1")
+@file:DependsOn("com.soywiz.kminiorm:kminiorm-jdbc:0.8.2")
 @file:DependsOn("org.xerial:sqlite-jdbc:3.30.1")
 @file:DependsOn("org.jetbrains.kotlin:kotlin-reflect:1.3.70")
 @file:CompilerOptions("-jvm-target", "1.8")
@@ -44,13 +44,13 @@ runBlocking {
 
     val baseQuery = table
         .where { it::value ge 20L }
-        .sorted(MyTable::value to +1)
+        .sorted { it::value to +1 }
 
     baseQuery.limit(4).collect {
         println(it)
     }
 
-    table.findOne { MyTable::key eq "hello" }!!
+    table.findOne { it::key eq "hello" }!!
         .copy(value = 70L)
         .save(table)
 
