@@ -17,16 +17,25 @@ data class DbTableWhere<T : DbTableBaseElement>(
     private val chunkSize: Int? = null,
     private val andClauses: List<DbQuery<T>> = emptyList()
 ) : Flow<T> {
+    @PublishedApi
+    internal val dummyInstance get() = table.dummyInstance
+    @PublishedApi
+    internal val <R> KProperty<R>.prop get() = table.getProperty(this)
+
     fun setFields(vararg fields: KProperty1<T, *>) = this.copy(fields = fields.toList())
 
     fun fields(vararg fields: KProperty1<T, *>) = this.copy(fields = (this.fields ?: emptyList()) + fields.toList())
     fun fields(fields: List<KProperty1<T, *>>) = this.copy(fields = (this.fields ?: emptyList()) + fields.toList())
 
-    fun field(fields: (T) -> KProperty0<*>) = this.copy(fields = (this.fields ?: emptyList()) + table.getProperty(fields(table.dummyInstance)))
-    fun fields(fields: (T) -> Iterable<KProperty0<*>>) = this.copy(fields = (this.fields ?: emptyList()) + fields(table.dummyInstance).map { table.getProperty(it) })
+    fun field(fields: (T) -> KProperty0<*>) = this.copy(fields = (this.fields ?: emptyList()) + fields(dummyInstance).prop)
+    fun fields(fields: (T) -> Iterable<KProperty0<*>>) = this.copy(fields = (this.fields ?: emptyList()) + fields(dummyInstance).map { it.prop })
 
-    fun sorted(vararg sorted: Pair<KProperty1<T, *>, Int>) = this.copy(sorted = sorted.toList())
-    fun sorted(sorted: List<Pair<KProperty1<T, *>, Int>>) = this.copy(sorted = sorted.toList())
+    fun setSorted(vararg sorted: Pair<KProperty1<T, *>, Int>) = this.copy(sorted = sorted.toList())
+    fun setSorted(sorted: List<Pair<KProperty1<T, *>, Int>>) = this.copy(sorted = sorted.toList())
+
+    fun sorted(vararg sorted: Pair<KProperty1<T, *>, Int>) = this.copy(sorted = (this.sorted ?: emptyList()) + sorted.toList())
+    fun sorted(sorted: List<Pair<KProperty1<T, *>, Int>>) = this.copy(sorted = (this.sorted ?: emptyList()) + sorted.toList())
+    fun sorted(sorted: (T) -> Pair<KProperty0<*>, Int>) = sorted(dummyInstance).let { this.sorted(it.first.prop to it.second) }
 
     inline fun skip(count: Number) = this.copy(skip = count.toLong())
     inline fun limit(count: Number) = this.copy(limit = count.toLong())
