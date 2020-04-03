@@ -1,9 +1,12 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.dialect.*
+import com.soywiz.kminiorm.where.*
 import kotlin.test.*
 
-class JdbcH2KMiniOrmTest : KMiniOrmBaseTests(JdbcDb("jdbc:h2:mem:test;DB_CLOSE_DELAY=10", "user", "", async = false)) {
-//class JdbcKMiniOrmTest : KMiniOrmBaseTests(JdbcDb("jdbc:h2:file:" + File("./test").absoluteFile, "user", "")) {
+//val H2_DEBUG_SQL = true
+val H2_DEBUG_SQL = false
+class JdbcH2KMiniOrmTest : JdbcKMiniOrmTest(JdbcDb("jdbc:h2:mem:test;DB_CLOSE_DELAY=10", "user", "", async = false, debugSQL = H2_DEBUG_SQL, dialect = H2Dialect)) {
     init {
         println("JdbcKMiniOrmTest:" + (db as JdbcDb).connection)
     }
@@ -19,5 +22,4 @@ class JdbcH2KMiniOrmTest : KMiniOrmBaseTests(JdbcDb("jdbc:h2:mem:test;DB_CLOSE_D
         assertEquals("", row2?.fieldV2)
         assertEquals(1, tableV2.findAll().count())
     }
-
 }

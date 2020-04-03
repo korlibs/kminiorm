@@ -57,6 +57,7 @@ open class DbIntKey(val key: Long = 0L) : Comparable<DbIntKey>, Serializable, Db
 }
 
 open class DbKey : Comparable<DbKey>, Serializable, DbBaseKey {
+    @Suppress("DEPRECATION")
     fun <T : DbTableElement> asRef() = DbRef<T>(timestamp, machineIdentifier, processIdentifier, counter, false)
 
     internal constructor(timestamp: Int, randomValue1: Int, randomValue2: Short, counter: Int, checkCounter: Boolean) {

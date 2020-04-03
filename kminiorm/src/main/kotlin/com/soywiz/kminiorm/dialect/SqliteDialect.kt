@@ -4,6 +4,7 @@ import com.soywiz.kminiorm.DbOnConflict
 import com.soywiz.kminiorm.DbQueryable
 import com.soywiz.kminiorm.IColumnDef
 import com.soywiz.kminiorm.SyntheticColumn
+import kotlin.reflect.*
 
 open class SqliteDialect : SqlDialect() {
     companion object : SqliteDialect()
@@ -37,4 +38,9 @@ open class SqliteDialect : SqlDialect() {
         return db.query("PRAGMA table_info(${quoteTableName(table)});")
                 .map { SyntheticColumn<String>(it["name"]?.toString() ?: "-") }
     }
+
+    override fun autoincrement(type: KType, annotations: KAnnotatedElement): String = "${toSqlType(type, annotations)} PRIMARY KEY AUTOINCREMENT"
+
+    override val supportsLastInsertId: Boolean = true
+    override fun lastInsertId(): String = "SELECT LAST_INSERT_ROWID();"
 }

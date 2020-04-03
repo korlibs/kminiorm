@@ -11,7 +11,7 @@ class DbMongoTest {
     fun test() = suspendTest {
         val mongo = DbMongo("mongodb://127.0.0.1:27017/kminiormtest")
         val demos = mongo.table<Demo>()
-        val demo = demos.insert(Demo(demo = HELLO))
+        val demo = demos.insert(Demo(demo = HELLO)).instance
         val demo2 = demos.findOne { Demo::_id eq demo._id }
         assertEquals(demo, demo2)
         demos.update(Partial(Demo::demo to WORLD)) { Demo::_id eq demo._id }

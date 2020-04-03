@@ -43,6 +43,10 @@ class WrappedConnection(val connectionIndex: Int, val connectionStr: String, val
     }
 }
 
+class JdbcDbConnectionContext(val connection: WrappedConnection) : AbstractCoroutineContextElement(JdbcDbConnectionContext.Key) {
+    companion object Key : CoroutineContext.Key<JdbcDbConnectionContext>
+}
+
 //class Db(val connection: String, val user: String, val pass: String, val dispatcher: CoroutineDispatcher = Dispatchers.IO) : DbQueryable {
 class JdbcDb(
         val connection: String,
@@ -70,10 +74,24 @@ class JdbcDb(
         if (async) withContext(dispatcher) { getConnection() } else getConnection()
     }
 
+    suspend fun <R> ensureSameConnection(block: suspend (WrappedConnection) -> R): R {
+        @Suppress("LiftReturnOrAssignment") // Crashes
+        val con = coroutineContext[JdbcDbConnectionContext.Key]
+        if (con != null) {
+            return block(con.connection)
+        } else {
+            return connectionPool.take { conn ->
+                withContext(JdbcDbConnectionContext(conn)) {
+                    block(conn)
+                }
+            }
+        }
+    }
+
     override suspend fun <R> transaction(name: String, callback: suspend DbBaseTransaction.() -> R): R {
         if (reallyDebugSQL) println("TRANSACTION START ($name)")
         val startTime = System.currentTimeMillis()
-        return connectionPool.take {
+        return ensureSameConnection {
             try {
                 val tr = JdbcTransaction(this, it)
                 tr.run {
@@ -270,12 +288,7 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
         }
     }
 
-    override suspend fun insert(instance: T): T {
-        insert(JdbcDbTyper.untype(instance) as Map<String, Any?>)
-        return instance
-    }
-
-    suspend fun _insert(data: List<Map<String, Any?>>, onConflict: DbOnConflict): DbResult {
+    suspend fun _insert(data: List<Map<String, Any?>>, onConflict: DbOnConflict): DbInsertResult<T> {
         try {
             val columns = data.first().keys
             val dataList = columns.map { column -> column to data.map { it[column] } }.toMap()
@@ -302,13 +315,30 @@ abstract class SqlTable<T : DbTableBaseElement> : AbstractDbTable<T>(), DbQuerya
                 valuesList += zvalues.toTypedArray()
             }
 
-            return multiQuery(insertInfo.sql, valuesList)
+            return db.ensureSameConnection {
+                val result = multiQuery(insertInfo.sql, valuesList)
+                var lastInsertId: Long? = null
+                //println("RESULT: $result")
+                val insertCount = result.extractNumber()?.toLong() ?: -1L
+                if (dialect.supportsLastInsertId) {
+                    val rowIdResult = query(dialect.lastInsertId())
+                    //println("ROWID_RESULT: $rowIdResult")
+                    lastInsertId = rowIdResult.extractNumber()?.toLong()
+                }
+                DbInsertResult<T>(
+                    lastInsertId = lastInsertId,
+                    lastKey = null,
+                    insertCount = insertCount,
+                    result = result,
+                    instanceOrNull = null
+                )
+            }
         } catch (e: Throwable) {
             throw dialect.transformException(e)
         }
     }
 
-    override suspend fun insert(data: Map<String, Any?>): DbResult {
+    override suspend fun insert(data: Map<String, Any?>): DbInsertResult<T> {
         return _insert(listOf(data), onConflict = DbOnConflict.ERROR)
     }
 
@@ -448,6 +478,9 @@ class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val 
     override suspend fun <R> transaction(name: String, callback: suspend DbTable<T>.() -> R): R = db.transaction(name) {
         callback(DbTableTransaction(name, this@DbJdbcTable, this))
     }
+
+    override suspend fun <R> ensureSameConnection(callback: suspend DbTable<T>.() -> R): R =
+        db.ensureSameConnection { callback() }
 
     fun <R> toColumnMap(map: Map<String, R>, skipOnInsert: Boolean): Map<ColumnDef<T>, R> {
         @Suppress("UNCHECKED_CAST")

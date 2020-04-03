@@ -12,6 +12,7 @@ import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.jvm.jvmErasure
 
 open class SqlDialect() : DbQuoteable {
+    open val supportsLastInsertId: Boolean = false
     val dialect = this
     open val supportPrimaryIndex get() = false
 
@@ -31,6 +32,8 @@ open class SqlDialect() : DbQuoteable {
         is Date -> quoteString(java.sql.Date(value.time).toString())
         else -> quoteString("$value")
     }
+
+
 
     open fun toSqlType(property: KProperty1<*, *>): String = toSqlType(property.returnType, property)
 
@@ -59,27 +62,29 @@ open class SqlDialect() : DbQuoteable {
         return buildString {
             append(quoteColumnName(colName))
             append(" ")
-            append(toSqlType(type, annotations))
             when {
                 annotations?.findAnnotation<DbAutoIncrement>() != null -> {
-                    append(autoincrement())
-                }
-                type.isMarkedNullable -> {
-                    append(" NULL")
+                    append(autoincrement(type, annotations))
                 }
                 else -> {
-                    append(" NOT NULL")
-                    append(" DEFAULT (")
-                    append(quoteLiteral(if (defaultValue != Unit) defaultValue else typer.createDefault(type)))
-                    append(")")
+                    append(toSqlType(type, annotations))
+                    when {
+                        type.isMarkedNullable -> {
+                            append(" NULL")
+                        }
+                        else -> {
+                            append(" NOT NULL")
+                            append(" DEFAULT (")
+                            append(quoteLiteral(if (defaultValue != Unit) defaultValue else typer.createDefault(type)))
+                            append(")")
+                        }
+                    }
                 }
             }
         }
     }
 
-    open fun autoincrement(): String {
-        return " PRIMARY KEY AUTOINCREMENT"
-    }
+    open fun autoincrement(type: KType, annotations: KAnnotatedElement): String = "${toSqlType(type, annotations)} AUTO_INCREMENT"
 
     open fun sqlCreateColumnDef(typer: Typer, column: IColumnDef): String {
         return sqlCreateColumnDef(typer, column.name, column.columnType, column.defaultValue, column.annotatedElement)
@@ -212,4 +217,6 @@ open class SqlDialect() : DbQuoteable {
             }
         }
     }
+
+    open fun lastInsertId(): String = error("UNSUPPORTED")
 }

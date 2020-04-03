@@ -5,7 +5,7 @@ import com.soywiz.kminiorm.where.*
 import kotlinx.coroutines.flow.*
 import kotlin.test.*
 
-class JdbcSqliteKMiniOrmTest : KMiniOrmBaseTests(JdbcDb("jdbc:sqlite::memory:", "", "", async = false, debugSQL = true, dialect = SqliteDialect)) {
+class JdbcSqliteKMiniOrmTest : JdbcKMiniOrmTest(JdbcDb("jdbc:sqlite::memory:", "", "", async = false, debugSQL = true, dialect = SqliteDialect)) {
     init {
         println("JdbcKMiniOrmTest:" + (db as JdbcDb).connection)
     }
@@ -33,20 +33,4 @@ class JdbcSqliteKMiniOrmTest : KMiniOrmBaseTests(JdbcDb("jdbc:sqlite::memory:", 
         tableV1.where.findFlow().collect {
         }
     }
-
-    @Test
-    fun testAutoIncrement() = suspendTest {
-        val table = db.table<TableAutoIncrement>()
-        table.deleteAll()
-        table.insert(TableAutoIncrement("a"))
-        table.insert(TableAutoIncrement("b"))
-        assertEquals(2, table.where.countRows())
-        assertEquals("a", table.where.eq(TableAutoIncrement::id, 1).find().first().tag)
-        assertEquals("b", table.where.eq(TableAutoIncrement::id, 2).find().first().tag)
-    }
-
-    data class TableAutoIncrement(
-        @DbUnique val tag: String,
-        @DbAutoIncrement @DbPrimary val id: Int = -1
-    ) : DbTableBaseElement
 }

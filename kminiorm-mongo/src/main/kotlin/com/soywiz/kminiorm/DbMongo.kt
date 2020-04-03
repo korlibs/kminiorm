@@ -76,16 +76,17 @@ class DbTableMongo<T : DbTableBaseElement>(override val db: DbMongo, override va
         }
     }
 
-    override suspend fun insert(instance: T): T {
-        insert(db.typer.untype(instance) as Map<String, Any?>)
-        return instance
-    }
-
-    override suspend fun insert(data: Map<String, Any?>): DbResult {
+    override suspend fun insert(data: Map<String, Any?>): DbInsertResult<T> {
         try {
             val dataToInsert = data.mapToMongoJson(db.typer)
             awaitMongo<Void> { dbCollection.insertOne(dataToInsert, it) }
-            return DbResult(mapOf("insert" to 1))
+            return DbInsertResult(
+                lastInsertId = null,
+                lastKey = null,
+                insertCount = 1L,
+                result = DbResult(mapOf("insert" to 1)),
+                instanceOrNull = null
+            )
         } catch (e: MongoWriteException) {
             if (e.error.category == ErrorCategory.DUPLICATE_KEY) {
                 throw DuplicateKeyDbException("Conflict", e)

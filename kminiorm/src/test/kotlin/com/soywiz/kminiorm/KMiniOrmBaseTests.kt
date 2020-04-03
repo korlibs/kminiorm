@@ -20,7 +20,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
                 string = "My String",
                 listString = listOf("hello", "world"),
                 mapString = mapOf("hello" to "world")
-        ))
+        )).instance
         val items = table.findAll().toList()
         assertEquals(1, items.size)
         val item1 = items.first()
@@ -58,7 +58,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     fun testBasicCounter() = suspendTest {
         val table = db.table<MyCounterTable>()
         table.deleteAll()
-        val item = table.insert(MyCounterTable())
+        val item = table.insert(MyCounterTable()).instance
         assertEquals(
                 1L,
                 table.update(
@@ -147,7 +147,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     fun testStoreTypes() = suspendTest {
         val table = db.table<ArrayOfDbKey>()
         table.deleteAll()
-        val item = table.insert(ArrayOfDbKey(listOf()))
+        val item = table.insert(ArrayOfDbKey(listOf())).instanceOrNull!!
         item.copy(items = listOf(DbKey("000000000000000000000001"), DbKey("000000000000000000000002")))
         table.update(Partial(mapOf(ArrayOfDbKey::items.name to listOf(DbKey("000000000000000000000001"), DbKey("000000000000000000000002"))), ArrayOfDbKey::class)) { id(item._id) }
         table.update(Partial(mapOf("list" to listOf(DbKey("000000000000000000000001"), DbKey("000000000000000000000002"))), ArrayOfDbKey::class)) { id(item._id) }
@@ -184,7 +184,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
     @Test
     fun testArrayOfCustom() = suspendTest {
         val table = db.table<ArrayOfCustom>().apply { deleteAll() }
-        val item = table.insert(ArrayOfCustom(listOf()))
+        val item = table.insert(ArrayOfCustom(listOf())).instance
         table.update(Partial(mapOf(
             "items" to listOf(mapOf("a" to 1, "b" to 2, "c" to 3))
         ), ArrayOfCustom::class)) { id(item._id) }
@@ -196,7 +196,7 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         val refs1 = db.table<Ref1>().apply { deleteAll() }
         val refs2 = db.table<Ref2>().apply { deleteAll() }
         val rref2 = Ref2("hello")
-        val ref2 = refs2.insert(rref2)
+        val ref2 = refs2.insert(rref2).instance
         val ref1 = refs1.insert(Ref1(listOf(ref2._id)))
         assertEquals(1, refs1.find { everything }.count())
         assertEquals(1, refs2.find { everything }.count())

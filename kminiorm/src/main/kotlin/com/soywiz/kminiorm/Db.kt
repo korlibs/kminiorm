@@ -82,6 +82,7 @@ private fun Map<String, Any?>.fixRow(): Map<String, Any?> {
 interface DbResult : List<Map<String, Any?>> {
     val data: List<Map<String, Any?>> get() = this
     val updateCount: Long get() = this.first().values.firstOrNull()?.toString()?.toLongOrNull() ?: 0L
+    fun extractNumber(): Number? = data.first().values.first() as? Number?
 }
 
 fun DbResult(data: List<Map<String, Any?>>): DbResult = object : DbResult, List<Map<String, Any?>> by data {}

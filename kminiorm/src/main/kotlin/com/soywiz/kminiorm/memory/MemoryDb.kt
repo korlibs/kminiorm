@@ -59,7 +59,7 @@ class MemoryDbTable<T : DbTableBaseElement>(
     }
 
     @Synchronized
-    override suspend fun insert(instance: T): T {
+    private fun _insert(instance: T): T {
         for (index in uniqueIndices) {
             if (index.contains(instance)) {
                 throw DuplicateKeyDbException("Duplicated $index")
@@ -68,6 +68,17 @@ class MemoryDbTable<T : DbTableBaseElement>(
         }
         instances.add(instance)
         return instance
+    }
+
+    override suspend fun insert(data: Map<String, Any?>): DbInsertResult<T> {
+        val instance = _insert(typerForClass.type(data))
+        return DbInsertResult(
+            lastInsertId = null,
+            lastKey = null,
+            insertCount = 1L,
+            result = DbResult(mapOf("insert" to 1)),
+            instanceOrNull = instance
+        )
     }
 
     @Synchronized

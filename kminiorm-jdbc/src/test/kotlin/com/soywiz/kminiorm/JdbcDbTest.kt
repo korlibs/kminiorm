@@ -1,5 +1,6 @@
 package com.soywiz.kminiorm
 
+import com.soywiz.kminiorm.where.*
 import java.text.*
 import java.util.*
 import kotlin.test.*

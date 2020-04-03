@@ -85,6 +85,16 @@ abstract class AbstractDbTable<T : DbTableBaseElement> : DbTable<T> {
 
 enum class DbOnConflict { ERROR, IGNORE, REPLACE }
 
+data class DbInsertResult<T : DbTableBaseElement>(
+    val lastInsertId: Long?,
+    val lastKey: DbBaseKey?,
+    val insertCount: Long,
+    val result: DbResult,
+    val instanceOrNull: T?
+) {
+    val instance get() = instanceOrNull!!
+}
+
 //interface DbTable<T : Any> {
 interface DbTable<T : DbTableBaseElement> {
     companion object
@@ -104,12 +114,9 @@ interface DbTable<T : DbTableBaseElement> {
     suspend fun initialize(): DbTable<T> = this
 
     // C
-    suspend fun insert(instance: T): T
-    suspend fun insert(instance: Partial<T>): DbResult = insert(instance.data)
-    suspend fun insert(data: Map<String, Any?>): DbResult {
-        insert(typerForClass.type(data))
-        return DbResult(mapOf("insert" to 1))
-    }
+    suspend fun insert(instance: T): DbInsertResult<T> = insert(typer.untype(instance) as Map<String, Any?>).let { it.copy(instanceOrNull = it.instanceOrNull ?: instance) }
+    suspend fun insert(instance: Partial<T>): DbInsertResult<T> = insert(instance.data)
+    suspend fun insert(data: Map<String, Any?>): DbInsertResult<T>
 
     suspend fun insertIgnore(value: T): Unit = insert(value, onConflict = DbOnConflict.IGNORE)
     suspend fun insert(instances: List<T>, onConflict: DbOnConflict = DbOnConflict.ERROR) {
@@ -175,7 +182,7 @@ interface DbTable<T : DbTableBaseElement> {
         val instancePartial = Partial(instance, instance::class)
 
         try {
-            return insert(instance)
+            return insert(instance).instanceOrNull ?: instance
         } catch (e: DuplicateKeyDbException) {
             val query = queryBuilder.build {
                 var out: DbQuery<T> = nothing
@@ -207,6 +214,8 @@ interface DbTable<T : DbTableBaseElement> {
 
     suspend fun <R> transaction(name: String, callback: suspend DbTable<T>.() -> R): R = callback()
     suspend fun <R> transaction(callback: suspend DbTable<T>.() -> R): R = transaction("UNKNOWN", callback)
+
+    suspend fun <R> ensureSameConnection(callback: suspend DbTable<T>.() -> R): R = callback()
 }
 
 suspend fun <T : DbTableElement> DbTable<T>.findById(id: DbKey): T? = findOne { DbQuery.BinOp(DbModel::_id as KProperty1<T, DbKey>, id, DbQueryBinOp.EQ) }
