@@ -108,7 +108,7 @@ data class DbTableWhere<T : DbTableBaseElement>(
     private val listLock = Mutex()
     suspend fun find(): List<T> = listLock.withLock {
         if (listCache == null) {
-            listCache = findFlow().toList()
+            listCache = table.find(skip = skip, limit = limit, fields = fields, sorted = sorted, query = FINAL_QUERY)
         }
         listCache!!
     }
