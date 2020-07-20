@@ -36,7 +36,7 @@ jobs:
       - name: Start MongoDB As Docker
         uses: wbari/start-mongoDB@v0.1
       - run: ./gradlew
-      - run: ./gradlew assemble check lint testDebugUnitTest publishKotlinMultiplatformPublicationToMavenRepository publishLinuxX64PublicationToMavenRepository
+      - run: ./gradlew assemble check testDebugUnitTest publishKotlinMultiplatformPublicationToMavenRepository publishLinuxX64PublicationToMavenRepository
 
   publish-finalize:
     needs: [publish-windows, publish-mac, publish-linux]
