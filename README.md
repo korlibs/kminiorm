@@ -10,11 +10,19 @@ https://bintray.com/korlibs/korlibs/kminiorm
 
 ```
 repositories {
+    // ...
     jcenter()
     maven { url = uri("https://dl.bintray.com/korlibs/korlibs") }
 }
 dependencies {
+    // Core:
     implementation("com.soywiz.korlibs.kminiorm:kminiorm-jvm:0.9.0")
+    // JDBC:
+    implementation("com.soywiz.korlibs.kminiorm:kminiorm-jdbc-jvm:0.9.0")
+    implementation("org.xerial:sqlite-jdbc:3.30.1")
+    implementation("com.h2database:h2:1.4.200")
+    // Mongo:
+    implementation("com.soywiz.korlibs.kminiorm:kminiorm-mongo-jvm:0.9.0")
 }
 ```
 
@@ -23,21 +31,29 @@ dependencies {
 You can run `./sample.main.kts` to get it working.
 
 ```kotlin
-data class MyTable(
-    @DbPrimary val key: String,
-    @DbIndex val value: Long
-) : DbBaseModel
+import com.soywiz.kminiorm.*
+import com.soywiz.kminiorm.dialect.*
+import com.soywiz.kminiorm.where.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.*
+import java.io.*
 
-val sqliteFile = File("sample.sq3")
-val db = JdbcDb(
+fun main() = runBlocking {
+    data class MyTable(
+        @DbPrimary val key: String,
+        @DbIndex val value: Long
+    ) : DbBaseModel
+
+    val sqliteFile = File("sample.sq3")
+    val db = JdbcDb(
         "jdbc:sqlite:${sqliteFile.absoluteFile.toURI()}",
         debugSQL = System.getenv("DEBUG_SQL") == "true",
         dialect = SqliteDialect,
         async = true
-)
+    )
 
-val table = db.table<MyTable>()
-table.insert(
+    val table = db.table<MyTable>()
+    table.insert(
         MyTable("hello", 10L),
         MyTable("world", 20L),
         MyTable("this", 30L),
@@ -45,10 +61,12 @@ table.insert(
         MyTable("a", 50L),
         MyTable("test", 60L),
         onConflict = DbOnConflict.IGNORE
-)
+    )
 
-table.where { it::value ge 20L }.limit(10).collect {
-    println(it)
+    table.where { it::value ge 20L }.limit(10).collect {
+        println(it)
+    }
+    Unit
 }
 ```
 
