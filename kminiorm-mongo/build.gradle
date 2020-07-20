@@ -1,7 +1,16 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
+import org.jetbrains.kotlin.gradle.plugin.sources.DefaultKotlinSourceSet
+
+apply plugin: com.soywiz.korlibs.KorlibsPlugin
+
 dependencies {
-    add("api", project(":kminiorm"))
-    add("api", "org.mongodb:mongodb-driver-async:3.10.1")
-    add("testCompile", project(":kminiorm").sourceSets.test.output)
+    add("jvmMainApi", project(":kminiorm"))
+    add("jvmMainApi", "org.mongodb:mongodb-driver-async:3.10.1")
+	//afterEvaluate {
+	//	((DefaultKotlinSourceSet)project(":kminiorm").kotlin.sourceSets.jvmTest).kotlin
+	//	println("yyyyyyyyy-" + project(":kminiorm").kotlin.sourceSets.jvmTest.class)
+	//}
+	add("jvmTestApi", ((KotlinMultiplatformExtension)project(":kminiorm").kotlin).jvm().compilations.getByName("test").output.allOutputs)
     //add("testCompile", project(":kminiorm", "test"))//.sourceSets.test.output)
     //sourceSets["test"].output
 }

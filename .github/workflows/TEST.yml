@@ -26,9 +26,9 @@ jobs:
       #- { uses: actions/cache@v1, with: { path: '~/.konan', key: "${{ runner.os }}-konan-${{ hashFiles('**/*.gradle*') }}", restore-keys: "${{ runner.os }}-konan-" } }
       - run: CALL gradlew.bat --no-daemon
         shell: cmd
-      - run: CALL gradlew.bat --no-daemon jvmTest
+      - run: CALL gradlew.bat --no-daemon jvmTest -x :kminiorm-mongo:jvmTest
         shell: cmd
-      - run: CALL gradlew.bat --no-daemon assemble check
+      - run: CALL gradlew.bat --no-daemon assemble check -x :kminiorm-mongo:jvmTest
         shell: cmd
         env:
           DISABLE_JAVASCRIPT_TEST: true
@@ -40,7 +40,7 @@ jobs:
       #- { uses: actions/cache@v1, with: { path: '~/.gradle/caches', key: "${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}", restore-keys: "${{ runner.os }}-gradle-" } }
       #- { uses: actions/cache@v1, with: { path: '~/.konan', key: "${{ runner.os }}-konan-${{ hashFiles('**/*.gradle*') }}", restore-keys: "${{ runner.os }}-konan-" } }
       - run: ./gradlew --no-daemon
-      - run: ./gradlew --no-daemon jvmTest
+      - run: ./gradlew --no-daemon jvmTest -x :kminiorm-mongo:jvmTest
       - run: ./gradlew --no-daemon check
         env:
           DISABLE_JAVASCRIPT_TEST: true
@@ -49,6 +49,8 @@ jobs:
     if: "!contains(github.event.head_commit.message, '-SNAPSHOT')"
     steps:
       - uses: actions/checkout@v1
+      - name: Start MongoDB As Docker
+        uses: wbari/start-mongoDB@v0.1
       #- { uses: actions/cache@v1, with: { path: '~/.gradle/caches', key: "${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*') }}", restore-keys: "${{ runner.os }}-gradle-" } }
       #- { uses: actions/cache@v1, with: { path: '~/.konan', key: "${{ runner.os }}-konan-${{ hashFiles('**/*.gradle*') }}", restore-keys: "${{ runner.os }}-konan-" } }
       - run: ./gradlew --no-daemon

@@ -1,5 +1,25 @@
+apply plugin: com.soywiz.korlibs.KorlibsPlugin
+
+korlibs {
+}
+
+afterEvaluate {
+	kotlin {
+		jvm {
+			compilations.main.kotlinOptions {
+				freeCompilerArgs = ["-Xjsr305=strict", "-Xallow-kotlin-package"]
+			}
+		}
+	}
+}
+
 dependencies {
-    add("api", "org.javassist:javassist:3.26.0-GA")
+    add("jvmMainApi", "org.javassist:javassist:3.26.0-GA")
+	add("jvmMainApi", "org.jetbrains.kotlin:kotlin-reflect")
+	add("jvmMainApi", "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+	//compile('com.fasterxml.jackson.module:jackson-module-kotlin:2.9.7')
+	add("jvmTestApi", "org.jetbrains.kotlin:kotlin-test-junit")
+	add("jvmTestApi", "junit:junit:4.12")
     //implementation 'net.bytebuddy:byte-buddy:1.10.8'
     //implementation 'com.fasterxml.jackson.module:jackson-module-afterburner:2.7.1'
     //implementation 'com.fasterxml.jackson.module:jackson-module-kotlin:2.7.1'
