@@ -11,24 +11,40 @@ env:
   BINTRAY_KEY: ${{ secrets.BINTRAY_KEY }}
 
 jobs:
-  publish-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v1
-      - run: CALL gradlew.bat --no-daemon
-        shell: cmd
-      - run: CALL gradlew.bat --no-daemon assemble check publishMingwX64PublicationToMavenRepository -x :kminiorm-mongo:jvmTest
-        shell: cmd
-        env:
-          DISABLE_JAVASCRIPT_TEST: true
-  publish-mac:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v1
-      - run: ./gradlew
-      - run: ./gradlew assemble check publish -x publishKotlinMultiplatformPublicationToMavenRepository -x :kminiorm-mongo:jvmTest
-        env:
-          DISABLE_JAVASCRIPT_TEST: true
+  #publish-windows:
+  #  runs-on: windows-latest
+  #  steps:
+  #    - uses: actions/checkout@v1
+  #    - run: CALL gradlew.bat --no-daemon
+  #      shell: cmd
+  #    - run: CALL gradlew.bat --no-daemon assemble check publishMingwX64PublicationToMavenRepository -x :kminiorm-mongo:jvmTest
+  #      shell: cmd
+  #      env:
+  #        DISABLE_JAVASCRIPT_TEST: true
+  #publish-mac:
+  #  runs-on: macos-latest
+  #  steps:
+  #    - uses: actions/checkout@v1
+  #    - run: ./gradlew
+  #    - run: ./gradlew assemble check publish -x publishKotlinMultiplatformPublicationToMavenRepository -x :kminiorm-mongo:jvmTest
+  #      env:
+  #        DISABLE_JAVASCRIPT_TEST: true
+  #publish-linux:
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    - uses: actions/checkout@v1
+  #    - name: Start MongoDB As Docker
+  #      uses: wbari/start-mongoDB@v0.1
+  #    - run: ./gradlew
+  #    - run: ./gradlew assemble check publishKotlinMultiplatformPublicationToMavenRepository publishLinuxX64PublicationToMavenRepository
+  #
+  #publish-finalize:
+  #  needs: [publish-windows, publish-mac, publish-linux]
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    - uses: actions/checkout@v1
+  #    - run: ./gradlew actuallyPublishBintray
+  #
   publish-linux:
     runs-on: ubuntu-latest
     steps:
@@ -36,10 +52,10 @@ jobs:
       - name: Start MongoDB As Docker
         uses: wbari/start-mongoDB@v0.1
       - run: ./gradlew
-      - run: ./gradlew assemble check publishKotlinMultiplatformPublicationToMavenRepository publishLinuxX64PublicationToMavenRepository
+      - run: ./gradlew assemble check publish
 
   publish-finalize:
-    needs: [publish-windows, publish-mac, publish-linux]
+    needs: [publish-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
