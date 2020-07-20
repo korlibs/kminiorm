@@ -8,6 +8,16 @@ ORM for Kotlin supporting JDBC and MongoDB
 
 https://bintray.com/korlibs/korlibs/kminiorm
 
+```
+repositories {
+    jcenter()
+    maven { url = uri("https://dl.bintray.com/korlibs/korlibs") }
+}
+dependencies {
+    implementation("com.soywiz.korlibs.kminiorm:kminiorm-jvm:0.9.0")
+}
+```
+
 ## Sample:
 
 You can run `./sample.main.kts` to get it working.
