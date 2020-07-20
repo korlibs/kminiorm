@@ -4,6 +4,10 @@
 
 ORM for Kotlin supporting JDBC and MongoDB
 
+## Repository:
+
+https://bintray.com/korlibs/korlibs/kminiorm
+
 ## Sample:
 
 You can run `./sample.main.kts` to get it working.
