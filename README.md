@@ -8,7 +8,7 @@ ORM for Kotlin supporting JDBC and MongoDB
 
 https://bintray.com/korlibs/korlibs/kminiorm
 
-```
+```kotlin
 repositories {
     // ...
     jcenter()
