@@ -1,4 +1,6 @@
 buildscript {
+    val easyPluginVersion: String by project
+
     repositories {
         mavenLocal()
         mavenCentral()
@@ -11,7 +13,7 @@ buildscript {
     }
 
     dependencies {
-        classpath("com.soywiz.korlibs:easy-kotlin-mpp-gradle-plugin:0.9.3") // Kotlin 1.3.72: https://github.com/korlibs/easy-kotlin-mpp-gradle-plugin
+        classpath("com.soywiz.korlibs:easy-kotlin-mpp-gradle-plugin:$easyPluginVersion")
     }
 }
 

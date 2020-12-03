@@ -105,7 +105,7 @@ data class SyntheticColumn(
 @OptIn(ExperimentalStdlibApi::class)
 inline fun <reified T> SyntheticColumn(name: String, defaultValue: Any? = Unit, annotatedElement: KAnnotatedElement? = null) = SyntheticColumn(name, typeOf<T>(), defaultValue, annotatedElement)
 
-class ColumnDef<T : Any>(val ormTableInfo: OrmTableInfo<T>, val dialect: SqlDialect, val property: KProperty1<T, *>) : IColumnDef {
+class ColumnDef<T : Any>(val ormTableInfo: OrmTableInfo<T>, val dialect: SqlDialect, val property: KProperty1<T, Any?>) : IColumnDef {
     val jclazz get() = property.returnType.jvmErasure
     override val name = property.findAnnotation<DbName>()?.name ?: property.name
     override val columnType get() = property.returnType

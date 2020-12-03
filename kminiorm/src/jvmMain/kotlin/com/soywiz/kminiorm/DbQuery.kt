@@ -65,7 +65,7 @@ open class DbQueryBuilder<T : DbBaseModel>(val table: DbTable<T>) {
     infix fun <R : Comparable<R>?> KProperty1<@Exact T, @Exact R>.ge(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.GE)
     infix fun <R : Comparable<R>?> KProperty1<@Exact T, @Exact R>.le(literal: R) = DbQuery.BinOp(this, literal, DbQueryBinOp.LE)
     infix fun <R : Comparable<R>?> KProperty1<@Exact T, @Exact R>.BETWEEN(literal: Pair<R, R>) = (this ge literal.first) AND (this lt literal.second)
-    infix fun <R : Comparable<R>> KProperty1<@Exact T, @Exact R?>.BETWEEN(literal: ClosedRange<R>) = ((this as KProperty1<@Exact T, @Exact R>) ge (literal.start)) AND (this le literal.endInclusive)
+    infix fun <R : Comparable<R>> KProperty1<@Exact T, @Exact R>.BETWEEN(literal: ClosedRange<R>) = ((this as KProperty1<@Exact T, @Exact R>) ge (literal.start)) AND (this le literal.endInclusive)
 
     infix fun <R : Any?> KProperty0<@Exact R>.IN(literals: Iterable<R>) = prop IN literals
     infix fun <R : Any?> KProperty0<@Exact R>.LIKE(literal: R) = prop LIKE literal
@@ -77,7 +77,7 @@ open class DbQueryBuilder<T : DbBaseModel>(val table: DbTable<T>) {
     infix fun <R : Comparable<R>?> KProperty0<@Exact R>.ge(literal: R) = prop ge literal
     infix fun <R : Comparable<R>?> KProperty0<@Exact R>.le(literal: R) = prop le literal
     infix fun <R : Comparable<R>?> KProperty0<@Exact R>.BETWEEN(literal: Pair<R, R>) = prop BETWEEN literal
-    infix fun <R : Comparable<R>> KProperty0<@Exact R?>.BETWEEN(literal: ClosedRange<R>) = prop BETWEEN literal
+    infix fun <R : Comparable<R>> KProperty0<@Exact R>.BETWEEN(literal: ClosedRange<R>) = prop BETWEEN literal
 
     fun auto(instance: T): DbQuery<T> {
         val uniqueColumns = table.ormTableInfo.columnUniqueIndices.values.flatten()

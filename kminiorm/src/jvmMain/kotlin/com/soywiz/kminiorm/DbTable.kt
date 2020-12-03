@@ -176,7 +176,7 @@ interface DbTable<T : DbTableBaseElement> {
         return upsertWithProps(instance, *props)
     }
 
-    suspend fun upsertWithProps(instance: T, vararg props: KProperty1<T, *>): T {
+    suspend fun upsertWithProps(instance: T, vararg props: KProperty1<T, Any?>): T {
         if (props.isEmpty()) error("Must specify keys for the upsert")
 
         val instancePartial = Partial(instance, instance::class)
