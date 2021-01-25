@@ -6,10 +6,7 @@ buildscript {
         mavenCentral()
         jcenter()
         google()
-        maven { url = uri("https://dl.bintray.com/korlibs/korlibs/") }
         maven { url = uri("https://plugins.gradle.org/m2/") }
-        maven { url = uri("https://dl.bintray.com/kotlin/kotlin-eap") }
-        maven { url = uri("https://dl.bintray.com/kotlin/kotlin-dev") }
     }
 
     dependencies {
