@@ -1,6 +1,5 @@
 package com.soywiz.kminiorm
 
-import com.soywiz.kminiorm.where.*
 import java.text.*
 import java.util.*
 import kotlin.test.*
@@ -62,6 +61,38 @@ class JdbcDbTest {
             SimpleDateFormat("YYYY-MM-dd HH:mm:ss").format(table.findOne()!!.date)
         )
     }
+
+	@Test
+	fun testNullableDbRef() = suspendTest {
+		class User(
+			override val _id: DbRef<User> = DbRef(),
+		) : DbModel
+
+		data class Session(
+			@DbPrimary val uuid: String,
+			val userId: DbRef<User>?,
+			@DbIndex val validDate: Long,
+		) : DbBaseModel {
+			val logged get() = userId != null
+		}
+
+		val db = db(debug = false)
+		val users = db.table<User>().apply { deleteAll() }
+		val sessions = db.table<Session>().apply { deleteAll() }
+		val session1 = Session("uuid", null, 0L)
+		val us = User()
+		//users.insert(us)
+		//users.findAll()
+		sessions.insert(session1)
+		//sessions.findAll()
+
+		assertEquals(null, sessions.findAll()[0].userId)
+
+		sessions.upsert(session1.copy(userId = us._id))
+		val results = sessions.findAll()
+		assertEquals(1, results.size)
+		assertEquals(us._id, results[0].userId)
+	}
 
     data class Date1(@DbPrimary val id: Int, val date: Date) : DbModel.Base<Demo4>() {
     }

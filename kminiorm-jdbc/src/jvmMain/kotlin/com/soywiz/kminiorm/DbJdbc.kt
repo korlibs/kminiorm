@@ -502,6 +502,7 @@ class DbJdbcTable<T : DbTableBaseElement>(override val db: JdbcDb, override val 
             //is Date -> java.sql.Date(value.time)
             is java.sql.Date -> value
             is java.util.Date -> Timestamp(value.time)
+			is DbKey -> value.toHexString()
             else -> MiniJson.stringify(JsonTyper.untype(value))
         }
         //return value

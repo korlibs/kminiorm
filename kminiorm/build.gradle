@@ -1,3 +1,7 @@
+plugins {
+	//id 'org.jetbrains.kotlin.plugin.serialization' version '1.4.30-RC'
+}
+
 apply plugin: com.soywiz.korlibs.KorlibsPlugin
 
 korlibs {
@@ -14,8 +18,10 @@ afterEvaluate {
 }
 
 dependencies {
+	add("commonMainApi", "com.soywiz.korlibs.klock:klock:$klockVersion")
     add("jvmMainApi", "org.javassist:javassist:3.26.0-GA")
 	add("jvmMainApi", "org.jetbrains.kotlin:kotlin-reflect")
+	//add("commonMainApi", "org.jetbrains.kotlinx:kotlinx-serialization-properties:1.0.1")
 	add("jvmMainApi", "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
 	//compile('com.fasterxml.jackson.module:jackson-module-kotlin:2.9.7')
 	add("jvmTestApi", "org.jetbrains.kotlin:kotlin-test-junit")
