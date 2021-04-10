@@ -169,11 +169,9 @@ interface DbTable<T : DbTableBaseElement> {
 
     suspend fun upsertGetNew(instance: T): T {
         val info = OrmTableInfo(db.dialect, instance::class)
-        val props = info.columns
-                .filter { it.isPrimaryOrUnique && (it.property.name != DbModel::_id.name) }
-                .map { it.property }
-                .toTypedArray() as Array<KProperty1<T, *>>
-        return upsertWithProps(instance, *props)
+		val columns = info.columns.filter { it.isPrimaryOrUnique && (it.property.name != DbModel::_id.name) }
+				.ifEmpty { info.columns.filter { it.isPrimaryOrUnique } }
+        return upsertWithProps(instance, *(columns.map { it.property }.toTypedArray() as Array<KProperty1<T, *>>))
     }
 
     suspend fun upsertWithProps(instance: T, vararg props: KProperty1<T, Any?>): T {

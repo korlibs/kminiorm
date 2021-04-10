@@ -467,4 +467,18 @@ abstract class KMiniOrmBaseTests(val db: Db) {
         assertEquals(1, baseQuery.where { it::a eq "b" }.count(), "[b]")
         assertEquals(listOf("b", "a"), baseQuery.sorted(MultiInsertTest::a to -1).map { it.a }.toList(), "[c]")
     }
+
+	data class MyIdTable(
+		@DbPrimary override val _id: DbRef<MyIdTable>,
+		val value: Int
+	) : DbModel
+
+	@Test
+	fun testUpsertById() = suspendTest {
+		val table = db.table<MyIdTable>()
+		table.deleteAll()
+		val ref = DbRef<MyIdTable>()
+		table.upsert(MyIdTable(ref, 1))
+		table.upsert(MyIdTable(ref, 2))
+	}
 }
