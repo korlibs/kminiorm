@@ -10,6 +10,8 @@
 
 ORM for Kotlin supporting JDBC and MongoDB
 
+### Full Documentation: <https://korlibs.soywiz.com/kminiorm/>
+
 ## Gradle:
 
 ```kotlin
