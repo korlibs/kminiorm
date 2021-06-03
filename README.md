@@ -1,28 +1,33 @@
 # kminiorm
 
-[![Actions Status](https://github.com/soywiz/kminiorm/workflows/CI/badge.svg)](https://github.com/soywiz/kminiorm/actions?query=workflow%3ACI)
+<!-- BADGES -->
+<p align="center">
+	<a href="https://github.com/korlibs/kminiorm/actions"><img alt="Build Status" src="https://github.com/korlibs/kminiorm/workflows/CI/badge.svg" /></a>
+    <a href="https://search.maven.org/artifact/com.soywiz.korlibs.kminiorm/kminiorm"><img alt="Maven Central" src="https://img.shields.io/maven-central/v/com.soywiz.korlibs.kminiorm/kminiorm"></a>
+	<a href="https://discord.korge.org/"><img alt="Discord" src="https://img.shields.io/discord/728582275884908604?logo=discord" /></a>
+</p>
+<!-- /BADGES -->
 
 ORM for Kotlin supporting JDBC and MongoDB
 
-## Repository:
-
-https://bintray.com/korlibs/korlibs/kminiorm
+## Gradle:
 
 ```kotlin
+def kminiOrmVersion = "..." // Find latest version on this README
+
 repositories {
     // ...
-    jcenter()
-    maven { url = uri("https://dl.bintray.com/korlibs/korlibs") }
+    mavenCentral()
 }
 dependencies {
     // Core:
-    implementation("com.soywiz.korlibs.kminiorm:kminiorm-jvm:0.9.0")
+    implementation("com.soywiz.korlibs.kminiorm:kminiorm-jvm:$kminiOrmVersion")
     // JDBC:
-    implementation("com.soywiz.korlibs.kminiorm:kminiorm-jdbc-jvm:0.9.0")
+    implementation("com.soywiz.korlibs.kminiorm:kminiorm-jdbc-jvm:$kminiOrmVersion")
     implementation("org.xerial:sqlite-jdbc:3.30.1")
     implementation("com.h2database:h2:1.4.200")
     // Mongo:
-    implementation("com.soywiz.korlibs.kminiorm:kminiorm-mongo-jvm:0.9.0")
+    implementation("com.soywiz.korlibs.kminiorm:kminiorm-mongo-jvm:$kminiOrmVersion")
 }
 ```
 
